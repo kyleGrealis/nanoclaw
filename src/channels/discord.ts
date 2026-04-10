@@ -1,3 +1,5 @@
+import path from 'path';
+
 import {
   Client,
   Events,
@@ -6,8 +8,9 @@ import {
   TextChannel,
 } from 'discord.js';
 
-import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
+import { ASSISTANT_NAME, GROUPS_DIR, TRIGGER_PATTERN } from '../config.js';
 import { readEnvFile } from '../env.js';
+import { downloadImage, processImage } from '../image.js';
 import { logger } from '../logger.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import {
@@ -92,22 +95,69 @@ export class DiscordChannel implements Channel {
         }
       }
 
-      // Handle attachments — store placeholders so the agent knows something was sent
+      // Resolve the registered group up front so image attachments can be
+      // downloaded and processed into the group's local attachments folder.
+      // Non-registered groups still get text placeholders for chat-metadata
+      // discovery, but we don't waste a network round trip downloading their
+      // media.
+      const registeredGroup = this.opts.registeredGroups()[chatJid];
+
+      // Handle attachments — images for registered groups go through
+      // processImage() (download + sharp resize + write to attachments/)
+      // and become `[Image: attachments/...]` placeholders that the agent
+      // runner reads back as multimodal content blocks. Everything else
+      // becomes a plain text placeholder so the agent at least knows
+      // something was sent.
       if (message.attachments.size > 0) {
-        const attachmentDescriptions = [...message.attachments.values()].map(
-          (att) => {
-            const contentType = att.contentType || '';
-            if (contentType.startsWith('image/')) {
-              return `[Image: ${att.name || 'image'}]`;
-            } else if (contentType.startsWith('video/')) {
-              return `[Video: ${att.name || 'video'}]`;
-            } else if (contentType.startsWith('audio/')) {
-              return `[Audio: ${att.name || 'audio'}]`;
+        const attachmentDescriptions: string[] = [];
+        for (const att of message.attachments.values()) {
+          const contentType = att.contentType || '';
+          if (contentType.startsWith('image/') && registeredGroup) {
+            let placeholder = `[Image: ${att.name || 'image'}]`;
+            const buffer = await downloadImage(att.url);
+            if (!buffer) {
+              logger.warn(
+                { chatJid, attachment: att.name },
+                'Image - download failed',
+              );
             } else {
-              return `[File: ${att.name || 'file'}]`;
+              try {
+                const groupDir = path.join(GROUPS_DIR, registeredGroup.folder);
+                const processed = await processImage(buffer, groupDir);
+                if (processed) {
+                  placeholder = `[Image: ${processed.relativePath}]`;
+                  logger.info(
+                    {
+                      chatJid,
+                      attachment: att.name,
+                      relativePath: processed.relativePath,
+                    },
+                    'Processed image attachment',
+                  );
+                } else {
+                  logger.warn(
+                    { chatJid, attachment: att.name },
+                    'Image - processing failed',
+                  );
+                }
+              } catch (err) {
+                logger.warn(
+                  { err, chatJid, attachment: att.name },
+                  'Image - processing failed',
+                );
+              }
             }
-          },
-        );
+            attachmentDescriptions.push(placeholder);
+          } else if (contentType.startsWith('image/')) {
+            attachmentDescriptions.push(`[Image: ${att.name || 'image'}]`);
+          } else if (contentType.startsWith('video/')) {
+            attachmentDescriptions.push(`[Video: ${att.name || 'video'}]`);
+          } else if (contentType.startsWith('audio/')) {
+            attachmentDescriptions.push(`[Audio: ${att.name || 'audio'}]`);
+          } else {
+            attachmentDescriptions.push(`[File: ${att.name || 'file'}]`);
+          }
+        }
         if (content) {
           content = `${content}\n${attachmentDescriptions.join('\n')}`;
         } else {
@@ -141,9 +191,8 @@ export class DiscordChannel implements Channel {
         isGroup,
       );
 
-      // Only deliver full message for registered groups
-      const group = this.opts.registeredGroups()[chatJid];
-      if (!group) {
+      // Only deliver full message for registered groups (lookup hoisted above)
+      if (!registeredGroup) {
         logger.debug(
           { chatJid, chatName },
           'Message from unregistered Discord channel',

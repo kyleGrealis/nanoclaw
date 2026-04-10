@@ -11,6 +11,7 @@ vi.mock('../env.js', () => ({ readEnvFile: vi.fn(() => ({})) }));
 // Mock config
 vi.mock('../config.js', () => ({
   ASSISTANT_NAME: 'Andy',
+  GROUPS_DIR: '/tmp/nanoclaw-test-groups',
   TRIGGER_PATTERN: /^@Andy\b/i,
 }));
 
@@ -23,6 +24,15 @@ vi.mock('../logger.js', () => ({
     error: vi.fn(),
   },
 }));
+
+// Mock image processing — by default returns null/undefined so the channel
+// falls back to the legacy `[Image: filename]` placeholder. Individual tests
+// can override these with mockResolvedValue to exercise the success path.
+vi.mock('../image.js', () => ({
+  downloadImage: vi.fn(async () => null),
+  processImage: vi.fn(async () => null),
+}));
+import { downloadImage, processImage } from '../image.js';
 
 // --- discord.js mock ---
 
@@ -600,6 +610,202 @@ describe('DiscordChannel', () => {
         'dc:1234567890123456',
         expect.objectContaining({
           content: '[Image: a.png]\n[File: b.txt]',
+        }),
+      );
+    });
+  });
+
+  // --- Image vision ---
+  // The Discord channel hands image attachments to the image module:
+  // download → resize → write to attachments/ → embed `[Image: attachments/...]`
+  // placeholder so the agent runner can read it back as a multimodal block.
+
+  describe('image vision', () => {
+    const downloadImageMock = downloadImage as ReturnType<typeof vi.fn>;
+    const processImageMock = processImage as ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      downloadImageMock.mockReset().mockResolvedValue(null);
+      processImageMock.mockReset().mockResolvedValue(null);
+    });
+
+    it('downloads, processes, and embeds the resolved attachment path on success', async () => {
+      const fakeBuffer = Buffer.from([0xff, 0xd8, 0xff]);
+      downloadImageMock.mockResolvedValue(fakeBuffer);
+      processImageMock.mockResolvedValue({
+        relativePath: 'attachments/img-1234-abcd.jpg',
+      });
+
+      const opts = createTestOpts();
+      const channel = new DiscordChannel('test-token', opts);
+      await channel.connect();
+
+      const attachments = new Map([
+        [
+          'att1',
+          {
+            name: 'photo.png',
+            contentType: 'image/png',
+            url: 'https://cdn.discordapp.com/attachments/1/2/photo.png',
+          },
+        ],
+      ]);
+      const msg = createMessage({
+        content: 'look at this',
+        attachments,
+        guildName: 'Server',
+      });
+      await triggerMessage(msg);
+
+      expect(downloadImageMock).toHaveBeenCalledWith(
+        'https://cdn.discordapp.com/attachments/1/2/photo.png',
+      );
+      // Group folder for the registered test channel is 'test-server'.
+      expect(processImageMock).toHaveBeenCalledWith(
+        fakeBuffer,
+        '/tmp/nanoclaw-test-groups/test-server',
+      );
+      expect(opts.onMessage).toHaveBeenCalledWith(
+        'dc:1234567890123456',
+        expect.objectContaining({
+          content: 'look at this\n[Image: attachments/img-1234-abcd.jpg]',
+        }),
+      );
+    });
+
+    it('falls back to filename placeholder when download fails', async () => {
+      downloadImageMock.mockResolvedValue(null);
+
+      const opts = createTestOpts();
+      const channel = new DiscordChannel('test-token', opts);
+      await channel.connect();
+
+      const attachments = new Map([
+        [
+          'att1',
+          {
+            name: 'photo.png',
+            contentType: 'image/png',
+            url: 'https://cdn.discordapp.com/attachments/1/2/photo.png',
+          },
+        ],
+      ]);
+      const msg = createMessage({
+        content: '',
+        attachments,
+        guildName: 'Server',
+      });
+      await triggerMessage(msg);
+
+      expect(downloadImageMock).toHaveBeenCalled();
+      expect(processImageMock).not.toHaveBeenCalled();
+      expect(opts.onMessage).toHaveBeenCalledWith(
+        'dc:1234567890123456',
+        expect.objectContaining({ content: '[Image: photo.png]' }),
+      );
+    });
+
+    it('falls back to filename placeholder when processing fails', async () => {
+      downloadImageMock.mockResolvedValue(Buffer.from([1, 2, 3]));
+      processImageMock.mockResolvedValue(null);
+
+      const opts = createTestOpts();
+      const channel = new DiscordChannel('test-token', opts);
+      await channel.connect();
+
+      const attachments = new Map([
+        [
+          'att1',
+          {
+            name: 'photo.jpg',
+            contentType: 'image/jpeg',
+            url: 'https://example.com/photo.jpg',
+          },
+        ],
+      ]);
+      const msg = createMessage({
+        content: '',
+        attachments,
+        guildName: 'Server',
+      });
+      await triggerMessage(msg);
+
+      expect(processImageMock).toHaveBeenCalled();
+      expect(opts.onMessage).toHaveBeenCalledWith(
+        'dc:1234567890123456',
+        expect.objectContaining({ content: '[Image: photo.jpg]' }),
+      );
+    });
+
+    it('skips image processing for unregistered channels', async () => {
+      downloadImageMock.mockResolvedValue(Buffer.from([1, 2, 3]));
+      processImageMock.mockResolvedValue({
+        relativePath: 'attachments/img-x.jpg',
+      });
+
+      // No registered groups — should not invoke download/process
+      const opts = createTestOpts({
+        registeredGroups: vi.fn(() => ({})),
+      });
+      const channel = new DiscordChannel('test-token', opts);
+      await channel.connect();
+
+      const attachments = new Map([
+        [
+          'att1',
+          {
+            name: 'photo.png',
+            contentType: 'image/png',
+            url: 'https://cdn.discordapp.com/attachments/1/2/photo.png',
+          },
+        ],
+      ]);
+      const msg = createMessage({ attachments, guildName: 'Server' });
+      await triggerMessage(msg);
+
+      expect(downloadImageMock).not.toHaveBeenCalled();
+      expect(processImageMock).not.toHaveBeenCalled();
+      expect(opts.onMessage).not.toHaveBeenCalled();
+    });
+
+    it('processes only image attachments — non-images skip the image module', async () => {
+      downloadImageMock.mockResolvedValue(Buffer.from([1]));
+      processImageMock.mockResolvedValue({
+        relativePath: 'attachments/img-mixed.jpg',
+      });
+
+      const opts = createTestOpts();
+      const channel = new DiscordChannel('test-token', opts);
+      await channel.connect();
+
+      const attachments = new Map([
+        [
+          'att1',
+          {
+            name: 'pic.png',
+            contentType: 'image/png',
+            url: 'https://example.com/pic.png',
+          },
+        ],
+        [
+          'att2',
+          { name: 'notes.txt', contentType: 'text/plain', url: 'unused' },
+        ],
+      ]);
+      const msg = createMessage({
+        content: '',
+        attachments,
+        guildName: 'Server',
+      });
+      await triggerMessage(msg);
+
+      // Only the image attachment should hit the image module.
+      expect(downloadImageMock).toHaveBeenCalledTimes(1);
+      expect(processImageMock).toHaveBeenCalledTimes(1);
+      expect(opts.onMessage).toHaveBeenCalledWith(
+        'dc:1234567890123456',
+        expect.objectContaining({
+          content: '[Image: attachments/img-mixed.jpg]\n[File: notes.txt]',
         }),
       );
     });
