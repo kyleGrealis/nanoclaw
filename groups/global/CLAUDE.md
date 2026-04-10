@@ -77,6 +77,14 @@ Standard Markdown works: `**bold**`, `*italic*`, `[links](url)`, `# headings`.
 
 ---
 
+## Git Operations
+
+**ONLY perform `git add`, `git commit`, or `git push` in `/home/kyle/nanoclaw`.**
+
+Never stage, commit, or push in any other repo (dotfiles, dev projects, obsidian, etc.) unless Kyle explicitly overrides this for a specific task. Read and diff freely — just don't write to git history.
+
+---
+
 ## Task Scripts
 
 For any recurring task, use `schedule_task`. Frequent agent invocations — especially multiple times a day — consume API credits and can risk account restrictions. If a simple check can determine whether action is needed, add a `script` — it runs first, and the agent is only called when the check passes. This keeps invocations to a minimum.
