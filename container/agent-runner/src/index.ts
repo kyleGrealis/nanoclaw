@@ -24,6 +24,8 @@ import {
 } from '@anthropic-ai/claude-agent-sdk';
 import { fileURLToPath } from 'url';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 interface ContainerInput {
   prompt: string;
   sessionId?: string;
@@ -484,6 +486,16 @@ async function runQuery(
             NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
           },
         },
+        ...(process.env.OLLAMA_ADMIN_TOOLS === 'true' && {
+          ollama: {
+            command: 'node',
+            args: [path.join(__dirname, 'ollama-mcp-stdio.js')],
+            env: {
+              OLLAMA_HOST: 'http://172.17.0.1:11434',
+              OLLAMA_ADMIN_TOOLS: 'true',
+            },
+          },
+        }),
       },
       hooks: {
         PreCompact: [
@@ -628,7 +640,6 @@ async function main(): Promise<void> {
     CLAUDE_CODE_AUTO_COMPACT_WINDOW: '165000',
   };
 
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const mcpServerPath = path.join(__dirname, 'ipc-mcp-stdio.js');
 
   let sessionId = containerInput.sessionId;
