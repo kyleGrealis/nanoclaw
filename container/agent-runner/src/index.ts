@@ -38,9 +38,26 @@ interface ContainerInput {
   imageAttachments?: Array<{ relativePath: string; mediaType: string }>;
 }
 
+// Claude vision API only accepts these four media types for base64 image
+// sources — see @anthropic-ai/claude-agent-sdk's Base64ImageSource type.
+type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
+const VALID_IMAGE_MEDIA_TYPES: readonly ImageMediaType[] = [
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+];
+
+function coerceImageMediaType(mt: string): ImageMediaType {
+  return (VALID_IMAGE_MEDIA_TYPES as readonly string[]).includes(mt)
+    ? (mt as ImageMediaType)
+    : 'image/jpeg';
+}
+
 interface ImageContentBlock {
   type: 'image';
-  source: { type: 'base64'; media_type: string; data: string };
+  source: { type: 'base64'; media_type: ImageMediaType; data: string };
 }
 interface TextContentBlock {
   type: 'text';
@@ -420,7 +437,11 @@ async function runQuery(
         const data = fs.readFileSync(imgPath).toString('base64');
         blocks.push({
           type: 'image',
-          source: { type: 'base64', media_type: img.mediaType, data },
+          source: {
+            type: 'base64',
+            media_type: coerceImageMediaType(img.mediaType),
+            data,
+          },
         });
         log(`Loaded image: ${imgPath}`);
       } catch (err) {
