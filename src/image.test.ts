@@ -4,11 +4,7 @@ import os from 'os';
 import path from 'path';
 import sharp from 'sharp';
 
-import {
-  downloadImage,
-  parseImageReferences,
-  processImage,
-} from './image.js';
+import { downloadImage, parseImageReferences, processImage } from './image.js';
 
 describe('parseImageReferences', () => {
   it('returns an empty array when no placeholders are present', () => {
@@ -31,7 +27,10 @@ describe('parseImageReferences', () => {
   it('extracts multiple placeholders across messages', () => {
     const refs = parseImageReferences([
       { content: 'first [Image: attachments/a.jpg]' },
-      { content: 'second [Image: attachments/b.jpg] and [Image: attachments/c.jpg]' },
+      {
+        content:
+          'second [Image: attachments/b.jpg] and [Image: attachments/c.jpg]',
+      },
     ]);
     expect(refs).toEqual([
       { relativePath: 'attachments/a.jpg', mediaType: 'image/jpeg' },
@@ -91,7 +90,9 @@ describe('processImage', () => {
 
     const result = await processImage(sourcePng, tmpDir);
     expect(result).not.toBeNull();
-    expect(result!.relativePath).toMatch(/^attachments\/img-\d+-[a-z0-9]{4}\.jpg$/);
+    expect(result!.relativePath).toMatch(
+      /^attachments\/img-\d+-[a-z0-9]{4}\.jpg$/,
+    );
 
     const fullPath = path.join(tmpDir, result!.relativePath);
     expect(fs.existsSync(fullPath)).toBe(true);
@@ -117,7 +118,9 @@ describe('processImage', () => {
 
     const result = await processImage(huge, tmpDir);
     expect(result).not.toBeNull();
-    const meta = await sharp(path.join(tmpDir, result!.relativePath)).metadata();
+    const meta = await sharp(
+      path.join(tmpDir, result!.relativePath),
+    ).metadata();
     // 1568 max long edge, 4:3 aspect → width 1568, height 1176.
     expect(meta.width).toBeLessThanOrEqual(1568);
     expect(meta.height).toBeLessThanOrEqual(1568);
@@ -138,7 +141,9 @@ describe('processImage', () => {
       .toBuffer();
 
     const result = await processImage(tiny, tmpDir);
-    const meta = await sharp(path.join(tmpDir, result!.relativePath)).metadata();
+    const meta = await sharp(
+      path.join(tmpDir, result!.relativePath),
+    ).metadata();
     expect(meta.width).toBe(50);
     expect(meta.height).toBe(40);
   });
