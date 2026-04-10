@@ -79,7 +79,7 @@ Standard Markdown works: `**bold**`, `*italic*`, `[links](url)`, `# headings`.
 
 ## Git Operations
 
-**ONLY perform `git add`, `git commit`, or `git push` in `/home/kyle/nanoclaw`.**
+**ONLY perform `git add`, `git commit`, or `git push` in this repo (the NanoClaw working directory).**
 
 Never stage, commit, or push in any other repo (dotfiles, dev projects, obsidian, etc.) unless Kyle explicitly overrides this for a specific task. Read and diff freely — just don't write to git history.
 
