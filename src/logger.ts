@@ -4,7 +4,8 @@ import fs from 'fs';
 
 const isTui = process.env.NANOCLAW_TUI === '1';
 
-const logDir = process.env.NANOCLAW_LOG_DIR || path.join(process.cwd(), 'logs', 'run');
+const logDir =
+  process.env.NANOCLAW_LOG_DIR || path.join(process.cwd(), 'logs', 'run');
 
 if (isTui) {
   fs.mkdirSync(logDir, { recursive: true });

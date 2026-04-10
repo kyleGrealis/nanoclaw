@@ -25,7 +25,12 @@ const DIM = '\x1b[2m';
 const BOLD = '\x1b[1m';
 const RESET = '\x1b[0m';
 
-function formatMessage(sender: string, content: string, time: string, isAssistant: boolean): string {
+function formatMessage(
+  sender: string,
+  content: string,
+  time: string,
+  isAssistant: boolean,
+): string {
   const color = isAssistant ? CYAN : GREEN;
   const header = `${color}${BOLD}${sender}${RESET} ${DIM}${time}${RESET}`;
   const indented = content
@@ -132,7 +137,14 @@ function App({ callbacks }: { callbacks: TuiCallbacks }) {
           write(formatMessage(ASSISTANT_NAME, response, time(), true));
         }
       } catch (err) {
-        write(formatMessage('System', `Error: ${err instanceof Error ? err.message : String(err)}`, time(), false));
+        write(
+          formatMessage(
+            'System',
+            `Error: ${err instanceof Error ? err.message : String(err)}`,
+            time(),
+            false,
+          ),
+        );
       } finally {
         setIsProcessing(false);
       }
@@ -153,11 +165,9 @@ function App({ callbacks }: { callbacks: TuiCallbacks }) {
       {isProcessing ? (
         <Spinner label={`${ASSISTANT_NAME} is thinking...`} />
       ) : (
-        <Text dimColor>
-          Press Enter to send · Esc to exit
-        </Text>
+        <Text dimColor>Press Enter to send · Esc to exit</Text>
       )}
-      <Text>{' '}</Text>
+      <Text> </Text>
       <Text color="gray">{'─'.repeat(cols)}</Text>
       <Box paddingX={1}>
         <Text color={isProcessing ? 'gray' : 'green'} bold>
@@ -180,6 +190,8 @@ function App({ callbacks }: { callbacks: TuiCallbacks }) {
 export function startTui(callbacks: TuiCallbacks): void {
   const title = `NanoClaw Terminal · ${ASSISTANT_NAME}`;
   console.log(`\n${CYAN}${BOLD}  ${title}${RESET}`);
-  console.log(`${DIM}  Send a message to start chatting with ${ASSISTANT_NAME}${RESET}\n`);
+  console.log(
+    `${DIM}  Send a message to start chatting with ${ASSISTANT_NAME}${RESET}\n`,
+  );
   render(<App callbacks={callbacks} />);
 }

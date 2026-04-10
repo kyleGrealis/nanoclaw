@@ -139,14 +139,19 @@ async function runAgent(prompt: string): Promise<string | null> {
 
         // Process the result and strip internal tags
         if (outputData.result && !resultReceived) {
-          const raw = typeof outputData.result === 'string' ? outputData.result : JSON.stringify(outputData.result);
-          const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+          const raw =
+            typeof outputData.result === 'string'
+              ? outputData.result
+              : JSON.stringify(outputData.result);
+          const text = raw
+            .replace(/<internal>[\s\S]*?<\/internal>/g, '')
+            .trim();
           const finalResult = text || outputData.result;
           resultReceived = true;
           resolveResult(finalResult);
           setCloseSignal(groupFolder);
         }
-      }
+      },
     );
 
     return await resultPromise;
@@ -168,13 +173,16 @@ function setCloseSignal(groupFolder: string): void {
   const ipcDir = resolveGroupIpcPath(groupFolder);
   const inputDir = path.join(ipcDir, 'input');
   const closeSignalPath = path.join(inputDir, '_close');
-  
+
   try {
     fs.mkdirSync(inputDir, { recursive: true });
     fs.writeFileSync(closeSignalPath, '');
     logger.debug({ groupFolder, closeSignalPath }, 'Close signal set');
   } catch (err) {
-    logger.error({ err, groupFolder, closeSignalPath }, 'Failed to set close signal');
+    logger.error(
+      { err, groupFolder, closeSignalPath },
+      'Failed to set close signal',
+    );
   }
 }
 
