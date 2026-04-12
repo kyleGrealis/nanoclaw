@@ -79,9 +79,23 @@ Standard Markdown works: `**bold**`, `*italic*`, `[links](url)`, `# headings`.
 
 ## Git Operations
 
-**ONLY perform `git add`, `git commit`, or `git push` in this repo (the NanoClaw working directory).**
+Never stage, commit, or push in any repo (ie, nanoclaw, dotfiles, dev projects, obsidian, etc.) unless Kyle explicitly overrides this for a specific task. Read and diff freely — just don't write to git history.
 
-Never stage, commit, or push in any other repo (dotfiles, dev projects, obsidian, etc.) unless Kyle explicitly overrides this for a specific task. Read and diff freely — just don't write to git history.
+---
+
+## NanoClaw Service Lifecycle
+
+**Do not rebuild or restart the NanoClaw service yourself.** You are running inside a container spawned by that service, so these commands kill your own parent mid-task, strand the conversation, and make Kyle think the bot has gone deaf:
+
+- `npm run build` (in the NanoClaw working directory)
+- `./container/build.sh`
+- `systemctl --user restart nanoclaw` / `stop` / `start`
+- `launchctl kickstart -k gui/$(id -u)/com.nanoclaw` (macOS equivalent)
+- Any other command that rebuilds or cycles the NanoClaw host process or agent container image
+
+When you edit files under `src/`, `container/`, or anything else that requires a rebuild to take effect: make the edits, describe exactly what changed and why, and ask Kyle to rebuild and restart from his terminal. He has a Claude Code session there that can run the build cleanly without killing the in-flight conversation.
+
+Reading, diffing, running tests (`npm test`), linting, and type-checking are all fine — they don't touch the running service.
 
 ---
 

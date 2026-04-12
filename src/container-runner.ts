@@ -13,7 +13,6 @@ import {
   DATA_DIR,
   GROUPS_DIR,
   IDLE_TIMEOUT,
-  OLLAMA_ADMIN_TOOLS,
   ONECLI_URL,
   TIMEZONE,
 } from './config.js';
@@ -239,6 +238,29 @@ function buildVolumeMounts(
       isMain,
     );
     mounts.push(...validatedMounts);
+
+    // Shadow sensitive subpaths inside mounted dotfiles trees. When an agent
+    // has read-write access to a dotfiles-style directory, it can reach any
+    // SSH keys stored alongside shell configs — which is exactly how Andy
+    // found id_ed25519 and started SSH'ing back into the host to restart
+    // nanoclaw. Overlay these subpaths with an empty sentinel directory so
+    // they appear empty in the container even when the parent is mounted.
+    const SHADOWED_SUBPATHS = ['ssh', 'work-ssh', '.ssh'];
+    const shadowEmptyDir = path.join(projectRoot, 'data', 'shadow-empty');
+    if (fs.existsSync(shadowEmptyDir)) {
+      for (const m of validatedMounts) {
+        for (const sub of SHADOWED_SUBPATHS) {
+          const hostCandidate = path.join(m.hostPath, sub);
+          if (fs.existsSync(hostCandidate)) {
+            mounts.push({
+              hostPath: shadowEmptyDir,
+              containerPath: path.posix.join(m.containerPath, sub),
+              readonly: true,
+            });
+          }
+        }
+      }
+    }
   }
 
   return mounts;
@@ -253,11 +275,6 @@ async function buildContainerArgs(
 
   // Pass host timezone so container's local time matches the user's
   args.push('-e', `TZ=${TIMEZONE}`);
-
-  // Forward Ollama admin tools flag if enabled
-  if (OLLAMA_ADMIN_TOOLS) {
-    args.push('-e', 'OLLAMA_ADMIN_TOOLS=true');
-  }
 
   // OneCLI gateway handles credential injection — containers never see real secrets.
   // The gateway intercepts HTTPS traffic and injects API keys or OAuth tokens.

@@ -551,16 +551,6 @@ async function runQuery(
             NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
           },
         },
-        ...(process.env.OLLAMA_ADMIN_TOOLS === 'true' && {
-          ollama: {
-            command: 'node',
-            args: [path.join(__dirname, 'ollama-mcp-stdio.js')],
-            env: {
-              OLLAMA_HOST: 'http://172.17.0.1:11434',
-              OLLAMA_ADMIN_TOOLS: 'true',
-            },
-          },
-        }),
       },
       hooks: {
         PreCompact: [

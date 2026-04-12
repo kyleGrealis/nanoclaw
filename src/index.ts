@@ -457,8 +457,39 @@ async function startMessageLoop(): Promise<void> {
 
   logger.info(`NanoClaw running (default trigger: ${DEFAULT_TRIGGER})`);
 
+  // Channel health check: every 30 poll ticks (~5 min at default 10s interval)
+  // If a channel reports disconnected, reconnect it before the next message check.
+  let healthCheckTick = 0;
+  const HEALTH_CHECK_TICKS = 30;
+
   while (true) {
     try {
+      // Periodic channel health check
+      healthCheckTick++;
+      if (healthCheckTick >= HEALTH_CHECK_TICKS) {
+        healthCheckTick = 0;
+        for (const channel of channels) {
+          if (!channel.isConnected()) {
+            logger.warn(
+              { channel: channel.name },
+              'Channel health check: disconnected — reconnecting',
+            );
+            try {
+              await channel.disconnect();
+              await channel.connect();
+              logger.info(
+                { channel: channel.name },
+                'Channel health check: reconnected successfully',
+              );
+            } catch (err) {
+              logger.error(
+                { err, channel: channel.name },
+                'Channel health check: reconnect failed',
+              );
+            }
+          }
+        }
+      }
       const jids = Object.keys(registeredGroups);
       const { messages, newTimestamp } = getNewMessages(
         jids,

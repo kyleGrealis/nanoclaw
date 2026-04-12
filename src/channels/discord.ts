@@ -26,6 +26,15 @@ export interface DiscordChannelOpts {
   registeredGroups: () => Record<string, RegisteredGroup>;
 }
 
+// Silent-gateway-death detection. discord.js will NOT fire a disconnect event
+// when the WebSocket zombies out (connection alive at TCP level, no packets
+// flowing, isReady() stays true forever). We defend by watching
+// shard.lastPingTimestamp — discord.js updates this on every heartbeat ACK
+// (~every 41s), so a gap longer than a few heartbeats means the socket is
+// zombied even if isReady() still claims true.
+const HEARTBEAT_STALENESS_THRESHOLD_MS = 3 * 60 * 1000; // 3 min ≈ 4+ missed heartbeats
+const HEALTH_TICK_INTERVAL_MS = 60 * 1000; // log + check once per minute
+
 export class DiscordChannel implements Channel {
   name = 'discord';
 
@@ -33,9 +42,143 @@ export class DiscordChannel implements Channel {
   private opts: DiscordChannelOpts;
   private botToken: string;
 
+  // Silent-death detection state. `messagesSinceTick` is observability-only
+  // (so Kyle can see whether user traffic is reaching the bot); the real
+  // liveness signal is the shard heartbeat timestamp, queried on each tick.
+  private messagesSinceTick = 0;
+  private healthTickTimer: NodeJS.Timeout | null = null;
+  private reconnecting = false;
+  private connectedAt = 0;
+
   constructor(botToken: string, opts: DiscordChannelOpts) {
     this.botToken = botToken;
     this.opts = opts;
+  }
+
+  // Returns ms since last heartbeat ACK, pulled from discord.js' shard state.
+  // Returns Infinity if no shard is present, or 0 if a shard exists but the
+  // first heartbeat hasn't landed yet (grace period during startup).
+  private getHeartbeatStalenessMs(): number {
+    if (!this.client) return Infinity;
+    const shard = this.client.ws.shards.first();
+    if (!shard) return Infinity;
+    // discord.js sets lastPingTimestamp on heartbeat ACK. Field is public
+    // on the WebSocketShard; typed as any to avoid depending on internal
+    // shape that may shift between minor versions.
+    const lastPingAt: number | undefined = (shard as unknown as {
+      lastPingTimestamp?: number;
+    }).lastPingTimestamp;
+    if (!lastPingAt || lastPingAt === 0) {
+      // No heartbeat ACK yet. Grace period = HEALTH_TICK_INTERVAL_MS since
+      // connect so a fresh bot doesn't immediately look stale.
+      const sinceConnect = Date.now() - this.connectedAt;
+      return sinceConnect < 2 * HEALTH_TICK_INTERVAL_MS ? 0 : sinceConnect;
+    }
+    return Date.now() - lastPingAt;
+  }
+
+  private startHealthTick(): void {
+    if (this.healthTickTimer) return;
+    this.healthTickTimer = setInterval(() => {
+      const stalenessMs = this.getHeartbeatStalenessMs();
+      const heartbeatAgeSec =
+        stalenessMs === Infinity ? -1 : Math.round(stalenessMs / 1000);
+      const messages = this.messagesSinceTick;
+      this.messagesSinceTick = 0;
+      const isReady = this.client?.isReady() ?? false;
+      const wsPing = this.client?.ws?.ping ?? null;
+
+      logger.info(
+        {
+          isReady,
+          heartbeatAgeSec,
+          messagesLast60s: messages,
+          wsPingMs: wsPing,
+          reconnecting: this.reconnecting,
+        },
+        'Discord health tick',
+      );
+
+      if (!isReady || this.reconnecting) return;
+
+      if (stalenessMs > HEARTBEAT_STALENESS_THRESHOLD_MS) {
+        logger.warn(
+          { heartbeatAgeSec },
+          'Discord heartbeat silent beyond threshold — forcing reconnect',
+        );
+        // Fire and forget — reconnect() awaits internally
+        this.reconnect(`no heartbeat for ${heartbeatAgeSec}s`).catch((err) => {
+          logger.error({ err }, 'Discord reconnect threw');
+        });
+      }
+    }, HEALTH_TICK_INTERVAL_MS);
+  }
+
+  private stopHealthTick(): void {
+    if (this.healthTickTimer) {
+      clearInterval(this.healthTickTimer);
+      this.healthTickTimer = null;
+    }
+  }
+
+  private async reconnect(reason: string): Promise<void> {
+    if (this.reconnecting) {
+      logger.info({ reason }, 'Discord reconnect already in progress, skipping');
+      return;
+    }
+    this.reconnecting = true;
+    logger.warn({ reason }, 'Discord reconnecting...');
+
+    // Destroy the dead client before starting fresh attempts
+    const disposeClient = (): void => {
+      const oldClient = this.client;
+      this.client = null;
+      if (oldClient) {
+        try {
+          oldClient.destroy();
+        } catch {
+          // Ignore errors during destroy
+        }
+      }
+    };
+    disposeClient();
+
+    // Retry with exponential backoff. Laptop-wake scenarios commonly have
+    // transient DNS/network failures as WiFi re-associates; giving up on
+    // the first failed attempt (previous behavior) leaves the process
+    // unable to recover. We keep trying for up to ~10 minutes total.
+    const backoffMs = [2000, 5000, 10000, 20000, 30000, 60000, 60000, 120000, 120000, 120000];
+    try {
+      for (let attempt = 0; attempt < backoffMs.length; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, backoffMs[attempt]));
+        try {
+          await this.connect();
+          logger.info(
+            { attempts: attempt + 1 },
+            'Discord reconnected successfully',
+          );
+          return;
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          const nextDelaySec =
+            attempt + 1 < backoffMs.length
+              ? Math.round(backoffMs[attempt + 1] / 1000)
+              : null;
+          logger.warn(
+            { attempt: attempt + 1, err: errMsg, nextDelaySec },
+            'Discord reconnect attempt failed — will retry',
+          );
+          // Clean up the half-built client before the next iteration
+          disposeClient();
+        }
+      }
+      logger.error(
+        { totalAttempts: backoffMs.length },
+        'Discord reconnect exhausted retries — health tick will re-trigger',
+      );
+    } finally {
+      this.reconnecting = false;
+    }
   }
 
   async connect(): Promise<void> {
@@ -49,6 +192,10 @@ export class DiscordChannel implements Channel {
     });
 
     this.client.on(Events.MessageCreate, async (message: Message) => {
+      // Observability counter — any inbound human message proves the
+      // gateway is delivering MESSAGE_CREATE dispatches to us. The real
+      // liveness check still runs on heartbeat freshness.
+      this.messagesSinceTick++;
       // Ignore bot messages (including own)
       if (message.author.bot) return;
 
@@ -222,8 +369,60 @@ export class DiscordChannel implements Channel {
       logger.error({ err: err.message }, 'Discord client error');
     });
 
-    return new Promise<void>((resolve) => {
+    // Shard lifecycle events — discord.js handles most reconnects automatically,
+    // but we hook these to log visibility and handle non-resumable close codes.
+    this.client.on(Events.ShardReconnecting, (shardId) => {
+      logger.info({ shardId }, 'Discord shard reconnecting...');
+    });
+
+    this.client.on(Events.ShardResume, (shardId, replayedEvents) => {
+      logger.info({ shardId, replayedEvents }, 'Discord shard resumed');
+    });
+
+    this.client.on(Events.ShardDisconnect, (closeEvent, shardId) => {
+      logger.warn({ shardId, code: closeEvent.code }, 'Discord shard disconnected');
+      // Close codes that discord.js will NOT automatically recover from
+      const nonResumableCodes = [4004, 4010, 4011, 4012, 4013, 4014];
+      if (nonResumableCodes.includes(closeEvent.code)) {
+        logger.error(
+          { code: closeEvent.code },
+          'Discord non-resumable disconnect — triggering reconnect',
+        );
+        this.reconnect(`close code ${closeEvent.code}`);
+      }
+    });
+
+    // Session invalidated — discord.js will not auto-reconnect, must re-login
+    this.client.on(Events.Invalidated, () => {
+      logger.error('Discord session invalidated — triggering reconnect');
+      this.reconnect('session invalidated');
+    });
+
+    return new Promise<void>((resolve, reject) => {
+      // Guard against login hanging forever — if we never reach ClientReady
+      // within the timeout, reject so the caller can retry instead of
+      // deadlocking the entire process. This is what bit us today: a post-
+      // sleep DNS failure made login() never resolve or reject on its own.
+      const LOGIN_TIMEOUT_MS = 60_000;
+      let settled = false;
+
+      const timeoutId = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error(`Discord login timed out after ${LOGIN_TIMEOUT_MS}ms`));
+      }, LOGIN_TIMEOUT_MS);
+
       this.client!.once(Events.ClientReady, (readyClient) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+
+        // Record connect time so the health tick grace period is accurate
+        // (shard.lastPingTimestamp is 0 until the first heartbeat ACK lands
+        // ~41s into the session).
+        this.connectedAt = Date.now();
+        this.startHealthTick();
+
         logger.info(
           { username: readyClient.user.tag, id: readyClient.user.id },
           'Discord bot connected',
@@ -235,7 +434,12 @@ export class DiscordChannel implements Channel {
         resolve();
       });
 
-      this.client!.login(this.botToken);
+      this.client!.login(this.botToken).catch((err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        reject(err);
+      });
     });
   }
 
@@ -272,7 +476,10 @@ export class DiscordChannel implements Channel {
   }
 
   isConnected(): boolean {
-    return this.client !== null && this.client.isReady();
+    if (this.client === null || !this.client.isReady()) return false;
+    // isReady() stays true during silent WebSocket death — don't trust it
+    // alone. Require recent shard heartbeat activity too.
+    return this.getHeartbeatStalenessMs() < HEARTBEAT_STALENESS_THRESHOLD_MS;
   }
 
   ownsJid(jid: string): boolean {
@@ -280,6 +487,7 @@ export class DiscordChannel implements Channel {
   }
 
   async disconnect(): Promise<void> {
+    this.stopHealthTick();
     if (this.client) {
       this.client.destroy();
       this.client = null;
