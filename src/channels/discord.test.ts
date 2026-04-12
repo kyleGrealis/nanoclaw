@@ -87,6 +87,14 @@ vi.mock('discord.js', () => {
       return this._ready;
     }
 
+    ws = {
+      shards: {
+        first: () => ({
+          lastPingTimestamp: Date.now(),
+        }),
+      },
+    };
+
     channels = {
       fetch: vi.fn().mockResolvedValue({
         send: vi.fn().mockResolvedValue(undefined),
