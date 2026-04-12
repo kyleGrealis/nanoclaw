@@ -65,9 +65,11 @@ export class DiscordChannel implements Channel {
     // discord.js sets lastPingTimestamp on heartbeat ACK. Field is public
     // on the WebSocketShard; typed as any to avoid depending on internal
     // shape that may shift between minor versions.
-    const lastPingAt: number | undefined = (shard as unknown as {
-      lastPingTimestamp?: number;
-    }).lastPingTimestamp;
+    const lastPingAt: number | undefined = (
+      shard as unknown as {
+        lastPingTimestamp?: number;
+      }
+    ).lastPingTimestamp;
     if (!lastPingAt || lastPingAt === 0) {
       // No heartbeat ACK yet. Grace period = HEALTH_TICK_INTERVAL_MS since
       // connect so a fresh bot doesn't immediately look stale.
@@ -123,7 +125,10 @@ export class DiscordChannel implements Channel {
 
   private async reconnect(reason: string): Promise<void> {
     if (this.reconnecting) {
-      logger.info({ reason }, 'Discord reconnect already in progress, skipping');
+      logger.info(
+        { reason },
+        'Discord reconnect already in progress, skipping',
+      );
       return;
     }
     this.reconnecting = true;
@@ -147,7 +152,9 @@ export class DiscordChannel implements Channel {
     // transient DNS/network failures as WiFi re-associates; giving up on
     // the first failed attempt (previous behavior) leaves the process
     // unable to recover. We keep trying for up to ~10 minutes total.
-    const backoffMs = [2000, 5000, 10000, 20000, 30000, 60000, 60000, 120000, 120000, 120000];
+    const backoffMs = [
+      2000, 5000, 10000, 20000, 30000, 60000, 60000, 120000, 120000, 120000,
+    ];
     try {
       for (let attempt = 0; attempt < backoffMs.length; attempt++) {
         await new Promise((resolve) => setTimeout(resolve, backoffMs[attempt]));
@@ -380,7 +387,10 @@ export class DiscordChannel implements Channel {
     });
 
     this.client.on(Events.ShardDisconnect, (closeEvent, shardId) => {
-      logger.warn({ shardId, code: closeEvent.code }, 'Discord shard disconnected');
+      logger.warn(
+        { shardId, code: closeEvent.code },
+        'Discord shard disconnected',
+      );
       // Close codes that discord.js will NOT automatically recover from
       const nonResumableCodes = [4004, 4010, 4011, 4012, 4013, 4014];
       if (nonResumableCodes.includes(closeEvent.code)) {
@@ -409,7 +419,9 @@ export class DiscordChannel implements Channel {
       const timeoutId = setTimeout(() => {
         if (settled) return;
         settled = true;
-        reject(new Error(`Discord login timed out after ${LOGIN_TIMEOUT_MS}ms`));
+        reject(
+          new Error(`Discord login timed out after ${LOGIN_TIMEOUT_MS}ms`),
+        );
       }, LOGIN_TIMEOUT_MS);
 
       this.client!.once(Events.ClientReady, (readyClient) => {

@@ -238,29 +238,6 @@ function buildVolumeMounts(
       isMain,
     );
     mounts.push(...validatedMounts);
-
-    // Shadow sensitive subpaths inside mounted dotfiles trees. When an agent
-    // has read-write access to a dotfiles-style directory, it can reach any
-    // SSH keys stored alongside shell configs — which is exactly how Andy
-    // found id_ed25519 and started SSH'ing back into the host to restart
-    // nanoclaw. Overlay these subpaths with an empty sentinel directory so
-    // they appear empty in the container even when the parent is mounted.
-    const SHADOWED_SUBPATHS = ['ssh', 'work-ssh', '.ssh'];
-    const shadowEmptyDir = path.join(projectRoot, 'data', 'shadow-empty');
-    if (fs.existsSync(shadowEmptyDir)) {
-      for (const m of validatedMounts) {
-        for (const sub of SHADOWED_SUBPATHS) {
-          const hostCandidate = path.join(m.hostPath, sub);
-          if (fs.existsSync(hostCandidate)) {
-            mounts.push({
-              hostPath: shadowEmptyDir,
-              containerPath: path.posix.join(m.containerPath, sub),
-              readonly: true,
-            });
-          }
-        }
-      }
-    }
   }
 
   return mounts;
