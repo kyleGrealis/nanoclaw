@@ -83,6 +83,28 @@ Never stage, commit, or push in any repo (ie, nanoclaw, dotfiles, dev projects, 
 
 ---
 
+## Host Environment
+
+You are running on **Pi5** (Raspberry Pi 5, Arch Linux ARM, aarch64). This is your home machine.
+
+- **Local services you can check directly** (no SSH needed):
+  - `systemctl status shiny-server.service` -- Shiny Server
+  - `systemctl status slides-server.service` -- Quarto Slides Server
+  - `systemctl --user status nanoclaw` -- your own service (read-only, never restart)
+  - `systemctl --user status syncthing` -- Obsidian vault sync
+
+- **archMitters** (Kyle's workstation, x86_64) is reachable via SSH when it's online. Use `ssh archMitters` from your container to check services, read logs, or inspect configs there.
+
+- **Obsidian vault** is at `/workspace/extra/obsidian/` -- this is Syncthing-synced with archMitters, so changes you make here appear on both machines.
+
+## SSH Rules
+
+- **Never SSH to Pi5, localhost, or 127.0.0.1** -- you are already on Pi5
+- **SSH to archMitters is allowed** -- it's a separate machine
+- When archMitters is offline, SSH will fail -- inform Kyle and move on
+
+---
+
 ## NanoClaw Service Lifecycle
 
 **Do not rebuild or restart the NanoClaw service yourself.** You are running inside a container spawned by that service, so these commands kill your own parent mid-task, strand the conversation, and make Kyle think the bot has gone deaf:
