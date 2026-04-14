@@ -274,7 +274,10 @@ async function buildContainerArgs(
   if (process.env.ANTHROPIC_BASE_URL) {
     args.push('-e', `ANTHROPIC_BASE_URL=${process.env.ANTHROPIC_BASE_URL}`);
     if (process.env.ANTHROPIC_AUTH_TOKEN) {
-      args.push('-e', `ANTHROPIC_AUTH_TOKEN=${process.env.ANTHROPIC_AUTH_TOKEN}`);
+      args.push(
+        '-e',
+        `ANTHROPIC_AUTH_TOKEN=${process.env.ANTHROPIC_AUTH_TOKEN}`,
+      );
     }
     args.push('-e', `ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY ?? ''}`);
     if (process.env.ANTHROPIC_MODEL) {
