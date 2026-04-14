@@ -268,6 +268,20 @@ async function buildContainerArgs(
     );
   }
 
+  // Override Anthropic base URL if set on host — routes container API calls
+  // through a custom endpoint (e.g. Ollama) instead of OneCLI's gateway.
+  // Activate by setting ANTHROPIC_BASE_URL in the host systemd service override.
+  if (process.env.ANTHROPIC_BASE_URL) {
+    args.push('-e', `ANTHROPIC_BASE_URL=${process.env.ANTHROPIC_BASE_URL}`);
+    if (process.env.ANTHROPIC_AUTH_TOKEN) {
+      args.push('-e', `ANTHROPIC_AUTH_TOKEN=${process.env.ANTHROPIC_AUTH_TOKEN}`);
+    }
+    args.push('-e', `ANTHROPIC_API_KEY=${process.env.ANTHROPIC_API_KEY ?? ''}`);
+    if (process.env.ANTHROPIC_MODEL) {
+      args.push('-e', `ANTHROPIC_MODEL=${process.env.ANTHROPIC_MODEL}`);
+    }
+  }
+
   // Runtime-specific args for host gateway resolution
   args.push(...hostGatewayArgs());
 
