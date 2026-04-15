@@ -167,67 +167,6 @@ Agents run in containers, not behind application-level permission checks. They c
 
 We don't want configuration sprawl. Every user should customize NanoClaw so that the code does exactly what they want, rather than configuring a generic system. If you prefer having config files, you can tell Claude to add them.
 
-**Can I use third-party or open-source models?**
-
-Yes. [Ollama](https://ollama.com) v0.14.0+ has native Anthropic API compatibility, so NanoClaw can use Ollama models (including cloud-hosted ones) with no code changes -- just environment variables.
-
-**Ollama cloud models (recommended)**
-
-Cloud models like `qwen3.5:397b-cloud` run on Ollama's infrastructure, so there are no local hardware requirements beyond running the Ollama server itself.
-
-1. Install and start Ollama, then pull a cloud model:
-
-   ```bash
-   ollama pull qwen3.5:397b-cloud
-   ```
-
-2. Bind Ollama to all interfaces so Docker containers can reach it. Create a systemd override (or equivalent for your init system):
-
-   ```bash
-   sudo systemctl edit ollama
-   ```
-
-   ```ini
-   [Service]
-   Environment="OLLAMA_HOST=0.0.0.0:11434"
-   ```
-
-3. Add a NanoClaw service override with the Ollama endpoint and model:
-
-   ```bash
-   # macOS: edit the launchd plist
-   # Linux (systemd):
-   systemctl --user edit nanoclaw
-   ```
-
-   ```ini
-   [Service]
-   Environment="ANTHROPIC_BASE_URL=http://172.17.0.1:11434"
-   Environment="ANTHROPIC_AUTH_TOKEN=ollama"
-   Environment="ANTHROPIC_API_KEY="
-   Environment="ANTHROPIC_MODEL=qwen3.5:397b-cloud"
-   ```
-
-   Use `172.17.0.1` (Docker bridge IP on Linux) or `host.docker.internal` (Docker Desktop on macOS) so containers can reach the host's Ollama.
-
-4. Reload and restart both services:
-
-   ```bash
-   sudo systemctl daemon-reload && sudo systemctl restart ollama
-   systemctl --user daemon-reload && systemctl --user restart nanoclaw
-   ```
-
-To revert, remove the overrides and restart:
-
-```bash
-sudo systemctl revert ollama && sudo systemctl restart ollama
-systemctl --user revert nanoclaw && systemctl --user restart nanoclaw
-```
-
-**Other compatible endpoints**
-
-Any endpoint that speaks the Anthropic Messages API (`/v1/messages`) works the same way -- set `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, and `ANTHROPIC_MODEL` in your service environment. This includes [Together AI](https://together.ai), [Fireworks](https://fireworks.ai), and custom deployments.
-
 **How do I debug issues?**
 
 Ask Claude Code. "Why isn't the scheduler running?" "What's in the recent logs?" "Why did this message not get a response?" That's the AI-native approach that underlies NanoClaw.
