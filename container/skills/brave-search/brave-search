@@ -57,9 +57,12 @@ if [[ "$FORMAT" == "json" ]]; then
 fi
 
 # Pretty-print. If the API returned an error, surface it cleanly.
-echo "$RESPONSE" | python3 - <<'PY'
-import json, sys
-data = json.load(sys.stdin)
+# Pass the JSON via env var — piping into `python3 -` conflicts with using
+# stdin for the script, and shell-interpolating into triple-quotes breaks
+# on any response that contains them.
+BRAVE_RESPONSE="$RESPONSE" python3 <<'PY'
+import json, os, sys
+data = json.loads(os.environ["BRAVE_RESPONSE"])
 
 if "message" in data and "web" not in data and "news" not in data:
     print(f"Brave API error: {data.get('message')}", file=sys.stderr)
