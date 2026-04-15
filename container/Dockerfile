@@ -54,6 +54,10 @@ RUN npm run build
 COPY skills/pdf-reader/pdf-reader /usr/local/bin/pdf-reader
 RUN chmod +x /usr/local/bin/pdf-reader
 
+# Install brave-search CLI
+COPY skills/brave-search/brave-search /usr/local/bin/brave-search
+RUN chmod +x /usr/local/bin/brave-search
+
 # Create workspace directories
 RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/messages /workspace/ipc/tasks /workspace/ipc/input
 

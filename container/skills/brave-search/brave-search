@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Brave Search CLI. Hits api.search.brave.com; OneCLI credential proxy injects
+# the X-Subscription-Token header based on the host pattern.
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: brave-search [options] <query>
+
+Options:
+  --count N       Number of results (1-20, default 10)
+  --country XX    Two-letter country code (default US)
+  --json          Output raw JSON instead of formatted text
+  --news          Search news instead of web
+  -h, --help      Show this help
+
+Examples:
+  brave-search "raspberry pi 5 performance"
+  brave-search --count 5 "tailscale subnet router"
+  brave-search --news "cloudflare outage"
+EOF
+}
+
+COUNT=10
+COUNTRY=US
+FORMAT=text
+ENDPOINT=web
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --count) COUNT="$2"; shift 2 ;;
+    --country) COUNTRY="$2"; shift 2 ;;
+    --json) FORMAT=json; shift ;;
+    --news) ENDPOINT=news; shift ;;
+    -h|--help) usage; exit 0 ;;
+    --) shift; break ;;
+    -*) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
+    *) break ;;
+  esac
+done
+
+if [[ $# -eq 0 ]]; then
+  echo "Error: query required" >&2
+  usage >&2
+  exit 2
+fi
+
+QUERY="$*"
+ENCODED=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$QUERY")
+URL="https://api.search.brave.com/res/v1/${ENDPOINT}/search?q=${ENCODED}&count=${COUNT}&country=${COUNTRY}"
+
+RESPONSE=$(curl -sS -H "Accept: application/json" "$URL")
+
+if [[ "$FORMAT" == "json" ]]; then
+  echo "$RESPONSE"
+  exit 0
+fi
+
+# Pretty-print. If the API returned an error, surface it cleanly.
+echo "$RESPONSE" | python3 - <<'PY'
+import json, sys
+data = json.load(sys.stdin)
+
+if "message" in data and "web" not in data and "news" not in data:
+    print(f"Brave API error: {data.get('message')}", file=sys.stderr)
+    sys.exit(1)
+
+results = data.get("web", {}).get("results") or data.get("news", {}).get("results") or []
+if not results:
+    print("No results.")
+    sys.exit(0)
+
+for i, r in enumerate(results, 1):
+    title = r.get("title", "(no title)")
+    url = r.get("url", "")
+    desc = r.get("description", "").strip()
+    print(f"{i}. {title}")
+    print(f"   {url}")
+    if desc:
+        print(f"   {desc}")
+    print()
+PY
