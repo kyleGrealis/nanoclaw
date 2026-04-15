@@ -11,6 +11,7 @@ import {
 import { ASSISTANT_NAME, GROUPS_DIR, TRIGGER_PATTERN } from '../config.js';
 import { readEnvFile } from '../env.js';
 import { downloadImage, processImage } from '../image.js';
+import { downloadPdf } from '../pdf.js';
 import { logger } from '../logger.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import {
@@ -304,6 +305,34 @@ export class DiscordChannel implements Channel {
             attachmentDescriptions.push(placeholder);
           } else if (contentType.startsWith('image/')) {
             attachmentDescriptions.push(`[Image: ${att.name || 'image'}]`);
+          } else if (contentType === 'application/pdf' && registeredGroup) {
+            let placeholder = `[PDF: ${att.name || 'document.pdf'}]`;
+            try {
+              const groupDir = path.join(GROUPS_DIR, registeredGroup.folder);
+              const processed = await downloadPdf(att.url, groupDir, att.name);
+              if (processed) {
+                placeholder = `[PDF: ${processed.relativePath}]`;
+                logger.info(
+                  {
+                    chatJid,
+                    attachment: att.name,
+                    relativePath: processed.relativePath,
+                  },
+                  'Downloaded PDF attachment',
+                );
+              } else {
+                logger.warn(
+                  { chatJid, attachment: att.name },
+                  'Failed to download PDF attachment',
+                );
+              }
+            } catch (err) {
+              logger.warn(
+                { err, chatJid, attachment: att.name },
+                'Failed to download PDF attachment',
+              );
+            }
+            attachmentDescriptions.push(placeholder);
           } else if (contentType.startsWith('video/')) {
             attachmentDescriptions.push(`[Video: ${att.name || 'video'}]`);
           } else if (contentType.startsWith('audio/')) {

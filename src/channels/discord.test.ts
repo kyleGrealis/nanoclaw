@@ -558,7 +558,7 @@ describe('DiscordChannel', () => {
       await channel.connect();
 
       const attachments = new Map([
-        ['att1', { name: 'report.pdf', contentType: 'application/pdf' }],
+        ['att1', { name: 'archive.zip', contentType: 'application/zip' }],
       ]);
       const msg = createMessage({
         content: '',
@@ -570,9 +570,92 @@ describe('DiscordChannel', () => {
       expect(opts.onMessage).toHaveBeenCalledWith(
         'dc:1234567890123456',
         expect.objectContaining({
-          content: '[File: report.pdf]',
+          content: '[File: archive.zip]',
         }),
       );
+    });
+
+    it('downloads PDF attachment to group attachments dir', async () => {
+      const opts = createTestOpts();
+      const channel = new DiscordChannel('test-token', opts);
+      await channel.connect();
+
+      const pdfBytes = Buffer.concat([
+        Buffer.from('%PDF-1.4\n'),
+        Buffer.alloc(64, 0x20),
+      ]);
+      const fetchMock = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(
+          new Response(pdfBytes, { status: 200 }) as unknown as Response,
+        );
+
+      const attachments = new Map([
+        [
+          'att1',
+          {
+            name: 'contract.pdf',
+            contentType: 'application/pdf',
+            url: 'https://cdn.discord.test/contract.pdf',
+          },
+        ],
+      ]);
+      const msg = createMessage({
+        content: '',
+        attachments,
+        guildName: 'Server',
+      });
+      await triggerMessage(msg);
+
+      expect(fetchMock).toHaveBeenCalled();
+      expect(opts.onMessage).toHaveBeenCalledWith(
+        'dc:1234567890123456',
+        expect.objectContaining({
+          content: expect.stringMatching(
+            /^\[PDF: attachments\/pdf-\d+-contract\.pdf\]$/,
+          ),
+        }),
+      );
+
+      fetchMock.mockRestore();
+    });
+
+    it('falls back to [PDF: name] when download fails', async () => {
+      const opts = createTestOpts();
+      const channel = new DiscordChannel('test-token', opts);
+      await channel.connect();
+
+      const fetchMock = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValue(
+          new Response('', { status: 404 }) as unknown as Response,
+        );
+
+      const attachments = new Map([
+        [
+          'att1',
+          {
+            name: 'broken.pdf',
+            contentType: 'application/pdf',
+            url: 'https://cdn.discord.test/broken.pdf',
+          },
+        ],
+      ]);
+      const msg = createMessage({
+        content: '',
+        attachments,
+        guildName: 'Server',
+      });
+      await triggerMessage(msg);
+
+      expect(opts.onMessage).toHaveBeenCalledWith(
+        'dc:1234567890123456',
+        expect.objectContaining({
+          content: '[PDF: broken.pdf]',
+        }),
+      );
+
+      fetchMock.mockRestore();
     });
 
     it('includes text content with attachments', async () => {
