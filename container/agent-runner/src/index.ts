@@ -536,6 +536,7 @@ async function runQuery(
         'Skill',
         'NotebookEdit',
         'mcp__nanoclaw__*',
+        'mcp__google_calendar__*',
       ],
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
@@ -551,6 +552,20 @@ async function runQuery(
             NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
           },
         },
+        ...(fs.existsSync('/workspace/extra/google-calendar-mcp/gcp-oauth.keys.json')
+          ? {
+              google_calendar: {
+                command: 'npx',
+                args: ['-y', '@cocal/google-calendar-mcp'],
+                env: {
+                  GOOGLE_OAUTH_CREDENTIALS:
+                    '/workspace/extra/google-calendar-mcp/gcp-oauth.keys.json',
+                  GOOGLE_CALENDAR_MCP_TOKEN_PATH:
+                    '/workspace/extra/google-calendar-mcp/tokens.json',
+                },
+              },
+            }
+          : {}),
       },
       hooks: {
         PreCompact: [
