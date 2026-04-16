@@ -65,10 +65,15 @@ RUN mkdir -p /workspace/group /workspace/global /workspace/extra /workspace/ipc/
 # Container input (prompt, group info) is passed via stdin JSON.
 # Credentials are injected by the host's credential proxy — never passed here.
 # Follow-up messages arrive via IPC files in /workspace/ipc/input/
-RUN printf '#!/bin/bash\nset -e\n# Wire up SSH config from mounted andy-ssh directory (if present)\nif [ -d /workspace/extra/andy-ssh ]; then\n  mkdir -p ~/.ssh\n  cp /workspace/extra/andy-ssh/config ~/.ssh/config 2>/dev/null || true\n  cp /workspace/extra/andy-ssh/id_ed25519 ~/.ssh/id_ed25519 2>/dev/null || true\n  chmod 700 ~/.ssh\n  chmod 600 ~/.ssh/id_ed25519 2>/dev/null || true\n  chmod 600 ~/.ssh/config 2>/dev/null || true\nfi\ncd /app && npx tsc --outDir /tmp/dist 2>&1 >&2\nln -s /app/node_modules /tmp/dist/node_modules\nchmod -R a-w /tmp/dist\ncat > /tmp/input.json\nnode /tmp/dist/index.js < /tmp/input.json\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+RUN printf '#!/bin/bash\nset -e\n# Register current uid in /etc/passwd if missing (required for SSH client getpwuid)\nif ! getent passwd "$(id -u)" > /dev/null 2>&1; then\n  echo "kyle:x:$(id -u):$(id -g):Kyle:/tmp:/bin/bash" >> /etc/passwd\nfi\n# Wire up SSH config from mounted andy-ssh directory (if present)\nif [ -d /workspace/extra/andy-ssh ]; then\n  mkdir -p ~/.ssh\n  cp /workspace/extra/andy-ssh/config ~/.ssh/config 2>/dev/null || true\n  cp /workspace/extra/andy-ssh/id_ed25519 ~/.ssh/id_ed25519 2>/dev/null || true\n  chmod 700 ~/.ssh\n  chmod 600 ~/.ssh/id_ed25519 2>/dev/null || true\n  chmod 600 ~/.ssh/config 2>/dev/null || true\nfi\ncd /app && npx tsc --outDir /tmp/dist 2>&1 >&2\nln -s /app/node_modules /tmp/dist/node_modules\nchmod -R a-w /tmp/dist\ncat > /tmp/input.json\nnode /tmp/dist/index.js < /tmp/input.json\n' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 # Set ownership to node user (non-root) for writable directories
 RUN chown -R node:node /workspace && chmod 777 /home/node
+
+# Allow any uid to append to /etc/passwd at runtime (required for SSH
+# client's getpwuid() call when Docker remaps the uid). Safe in a
+# single-purpose sandboxed container.
+RUN chmod 666 /etc/passwd
 
 # Switch to non-root user (required for --dangerously-skip-permissions)
 USER node
