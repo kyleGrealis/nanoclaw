@@ -42,6 +42,15 @@ export class DiscordChannel implements Channel {
   private client: Client | null = null;
   private opts: DiscordChannelOpts;
   private botToken: string;
+  // The bot identity label this instance serves. `null` is the default
+  // identity (DISCORD_BOT_TOKEN) which handles any `dc:*` JID not claimed
+  // by a named identity. A non-null value (e.g. "milton") narrows ownership
+  // to JIDs whose registered group declares the same `botTokenRef`.
+  private tokenRef: string | null;
+  // For the default instance only: JIDs belonging to named instances. Used
+  // to subtract them from wildcard ownership so each Discord channel is
+  // routed to exactly one DiscordChannel.
+  private excludedJids: Set<string>;
 
   // Silent-death detection state. `messagesSinceTick` is observability-only
   // (so Kyle can see whether user traffic is reaching the bot); the real
@@ -51,9 +60,16 @@ export class DiscordChannel implements Channel {
   private reconnecting = false;
   private connectedAt = 0;
 
-  constructor(botToken: string, opts: DiscordChannelOpts) {
+  constructor(
+    botToken: string,
+    opts: DiscordChannelOpts,
+    tokenRef: string | null = null,
+    excludedJids: Set<string> = new Set(),
+  ) {
     this.botToken = botToken;
     this.opts = opts;
+    this.tokenRef = tokenRef;
+    this.excludedJids = excludedJids;
   }
 
   // Returns ms since last heartbeat ACK, pulled from discord.js' shard state.
@@ -255,7 +271,16 @@ export class DiscordChannel implements Channel {
       // Non-registered groups still get text placeholders for chat-metadata
       // discovery, but we don't waste a network round trip downloading their
       // media.
-      const registeredGroup = this.opts.registeredGroups()[chatJid];
+      // Also: when several bot identities are in the same channel (Andy +
+      // Milton both invited to #milton), only the instance whose tokenRef
+      // matches the group's botTokenRef should treat the group as registered.
+      // The "other" bots see the channel as unregistered, which means no
+      // attachment downloads, no message delivery — only chat-metadata
+      // discovery (which is idempotent on (jid)).
+      const groupRecord = this.opts.registeredGroups()[chatJid];
+      const groupRef = groupRecord?.botTokenRef ?? null;
+      const registeredGroup =
+        groupRecord && groupRef === this.tokenRef ? groupRecord : undefined;
 
       // Handle attachments — images for registered groups go through
       // processImage() (download + sharp resize + write to attachments/)
@@ -524,7 +549,14 @@ export class DiscordChannel implements Channel {
   }
 
   ownsJid(jid: string): boolean {
-    return jid.startsWith('dc:');
+    if (!jid.startsWith('dc:')) return false;
+    if (this.tokenRef === null) {
+      // Default instance: claim everything not assigned to a named instance.
+      return !this.excludedJids.has(jid);
+    }
+    // Named instance: claim only groups whose botTokenRef matches mine.
+    const group = this.opts.registeredGroups()[jid];
+    return group?.botTokenRef === this.tokenRef;
   }
 
   async disconnect(): Promise<void> {
@@ -551,12 +583,59 @@ export class DiscordChannel implements Channel {
 }
 
 registerChannel('discord', (opts: ChannelOpts) => {
-  const envVars = readEnvFile(['DISCORD_BOT_TOKEN']);
-  const token =
-    process.env.DISCORD_BOT_TOKEN || envVars.DISCORD_BOT_TOKEN || '';
-  if (!token) {
+  // Collect every bot token label referenced by registered groups, plus the
+  // unnamed default. For each label we read DISCORD_BOT_TOKEN_<LABEL> from
+  // env (uppercased), and for the default we read DISCORD_BOT_TOKEN.
+  const groups = opts.registeredGroups();
+  const namedRefs = new Set<string>();
+  const namedJidsByRef: Record<string, Set<string>> = {};
+  for (const [jid, group] of Object.entries(groups)) {
+    if (!jid.startsWith('dc:')) continue;
+    if (!group.botTokenRef) continue;
+    namedRefs.add(group.botTokenRef);
+    if (!namedJidsByRef[group.botTokenRef]) {
+      namedJidsByRef[group.botTokenRef] = new Set();
+    }
+    namedJidsByRef[group.botTokenRef].add(jid);
+  }
+
+  const wantedKeys = ['DISCORD_BOT_TOKEN'];
+  for (const ref of namedRefs) {
+    wantedKeys.push(`DISCORD_BOT_TOKEN_${ref.toUpperCase()}`);
+  }
+  const envVars = readEnvFile(wantedKeys);
+  const readToken = (key: string): string =>
+    process.env[key] || envVars[key] || '';
+
+  const channels: Channel[] = [];
+  const allNamedJids = new Set<string>();
+  for (const ref of namedRefs) {
+    const key = `DISCORD_BOT_TOKEN_${ref.toUpperCase()}`;
+    const token = readToken(key);
+    if (!token) {
+      logger.warn(
+        { ref, envVar: key },
+        'Discord: bot token for ref not set — group(s) using this ref will be unreachable',
+      );
+      continue;
+    }
+    for (const jid of namedJidsByRef[ref]) allNamedJids.add(jid);
+    channels.push(new DiscordChannel(token, opts, ref));
+  }
+
+  // Default bot. Required for chat-metadata discovery (the /chatid flow on
+  // first install) and for any group without an explicit botTokenRef.
+  const defaultToken = readToken('DISCORD_BOT_TOKEN');
+  if (defaultToken) {
+    channels.push(new DiscordChannel(defaultToken, opts, null, allNamedJids));
+  } else if (channels.length === 0) {
     logger.warn('Discord: DISCORD_BOT_TOKEN not set');
     return null;
+  } else {
+    logger.warn(
+      'Discord: DISCORD_BOT_TOKEN not set — only named-identity bots will run; channel-id discovery for new groups is unavailable until the default token is configured',
+    );
   }
-  return new DiscordChannel(token, opts);
+
+  return channels;
 });

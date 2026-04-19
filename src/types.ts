@@ -40,6 +40,10 @@ export interface RegisteredGroup {
   containerConfig?: ContainerConfig;
   requiresTrigger?: boolean; // Default: true for groups, false for solo chats
   isMain?: boolean; // True for the main control group (no trigger, elevated privileges)
+  // Optional label that selects which Discord bot identity serves this group.
+  // Resolved at startup against DISCORD_BOT_TOKEN_<LABEL> in .env. Unset →
+  // default DISCORD_BOT_TOKEN. Only meaningful for Discord groups today.
+  botTokenRef?: string;
 }
 
 export interface NewMessage {

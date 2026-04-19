@@ -80,7 +80,8 @@ function createSchema(database: Database.Database): void {
       trigger_pattern TEXT NOT NULL,
       added_at TEXT NOT NULL,
       container_config TEXT,
-      requires_trigger INTEGER DEFAULT 1
+      requires_trigger INTEGER DEFAULT 1,
+      bot_token_ref TEXT
     );
   `);
 
@@ -121,6 +122,17 @@ function createSchema(database: Database.Database): void {
     // Backfill: existing rows with folder = 'main' are the main group
     database.exec(
       `UPDATE registered_groups SET is_main = 1 WHERE folder = 'main'`,
+    );
+  } catch {
+    /* column already exists */
+  }
+
+  // Add bot_token_ref column if it doesn't exist (migration for existing DBs).
+  // Discord groups can opt into a per-group bot identity by setting this to a
+  // label that maps to DISCORD_BOT_TOKEN_<LABEL> in .env. NULL → default token.
+  try {
+    database.exec(
+      `ALTER TABLE registered_groups ADD COLUMN bot_token_ref TEXT`,
     );
   } catch {
     /* column already exists */
@@ -609,6 +621,7 @@ export function getRegisteredGroup(
         container_config: string | null;
         requires_trigger: number | null;
         is_main: number | null;
+        bot_token_ref: string | null;
       }
     | undefined;
   if (!row) return undefined;
@@ -631,6 +644,7 @@ export function getRegisteredGroup(
     requiresTrigger:
       row.requires_trigger === null ? undefined : row.requires_trigger === 1,
     isMain: row.is_main === 1 ? true : undefined,
+    botTokenRef: row.bot_token_ref ?? undefined,
   };
 }
 
@@ -639,8 +653,8 @@ export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
     throw new Error(`Invalid group folder "${group.folder}" for JID ${jid}`);
   }
   db.prepare(
-    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger, is_main)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, container_config, requires_trigger, is_main, bot_token_ref)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     jid,
     group.name,
@@ -650,6 +664,7 @@ export function setRegisteredGroup(jid: string, group: RegisteredGroup): void {
     group.containerConfig ? JSON.stringify(group.containerConfig) : null,
     group.requiresTrigger === undefined ? 1 : group.requiresTrigger ? 1 : 0,
     group.isMain ? 1 : 0,
+    group.botTokenRef ?? null,
   );
 }
 
@@ -663,6 +678,7 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
     container_config: string | null;
     requires_trigger: number | null;
     is_main: number | null;
+    bot_token_ref: string | null;
   }>;
   const result: Record<string, RegisteredGroup> = {};
   for (const row of rows) {
@@ -684,6 +700,7 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
       requiresTrigger:
         row.requires_trigger === null ? undefined : row.requires_trigger === 1,
       isMain: row.is_main === 1 ? true : undefined,
+      botTokenRef: row.bot_token_ref ?? undefined,
     };
   }
   return result;
