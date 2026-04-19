@@ -99,10 +99,6 @@ export interface Channel {
   setTyping?(jid: string, isTyping: boolean): Promise<void>;
   // Optional: sync group/chat names from the platform.
   syncGroups?(force: boolean): Promise<void>;
-  // Optional: acknowledge inbound message with a reaction while the agent processes it.
-  acknowledgeMessage?(jid: string, msgId: string): Promise<void>;
-  // Optional: remove the acknowledgement reaction after the agent is done.
-  removeAcknowledgement?(jid: string, msgId: string): Promise<void>;
 }
 
 // Callback type that channels use to deliver inbound messages

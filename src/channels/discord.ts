@@ -5,7 +5,6 @@ import {
   Events,
   GatewayIntentBits,
   Message,
-  Routes,
   TextChannel,
 } from 'discord.js';
 
@@ -60,8 +59,6 @@ export class DiscordChannel implements Channel {
   private healthTickTimer: NodeJS.Timeout | null = null;
   private reconnecting = false;
   private connectedAt = 0;
-  // Tracks message IDs that have a pending 👀 acknowledgement reaction.
-  private pendingReactions = new Set<string>();
 
   constructor(
     botToken: string,
@@ -215,7 +212,6 @@ export class DiscordChannel implements Channel {
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.DirectMessages,
-        GatewayIntentBits.GuildMessageReactions,
       ],
     });
 
@@ -585,40 +581,6 @@ export class DiscordChannel implements Channel {
     }
   }
 
-  async acknowledgeMessage(jid: string, msgId: string): Promise<void> {
-    if (!this.client) return;
-    try {
-      const channelId = jid.replace(/^dc:/, '');
-      const channel = await this.client.channels.fetch(channelId);
-      if (!channel || !('messages' in channel)) return;
-      const msg = await (channel as TextChannel).messages.fetch(msgId);
-      await msg.react('👀');
-      this.pendingReactions.add(msgId);
-    } catch (err) {
-      logger.debug(
-        { jid, msgId, err },
-        'Failed to add acknowledgement reaction',
-      );
-    }
-  }
-
-  async removeAcknowledgement(jid: string, msgId: string): Promise<void> {
-    if (!this.client || !this.pendingReactions.has(msgId)) return;
-    try {
-      const channelId = jid.replace(/^dc:/, '');
-      // DELETE /channels/{channelId}/messages/{msgId}/reactions/{emoji}/@me
-      // Removes only the bot's own reaction — no MANAGE_MESSAGES required.
-      await this.client.rest.delete(
-        Routes.channelMessageOwnReaction(channelId, msgId, encodeURIComponent('👀')),
-      );
-      this.pendingReactions.delete(msgId);
-    } catch (err) {
-      logger.debug(
-        { jid, msgId, err },
-        'Failed to remove acknowledgement reaction',
-      );
-    }
-  }
 }
 
 registerChannel('discord', (opts: ChannelOpts) => {
