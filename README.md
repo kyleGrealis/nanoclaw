@@ -67,6 +67,7 @@ Then run `/setup`. Claude Code handles everything: dependencies, authentication,
 ## What It Supports
 
 - **Multi-channel messaging** - Talk to your assistant from WhatsApp, Telegram, Discord, Slack, or Gmail. Add channels with skills like `/add-whatsapp` or `/add-telegram`. Run one or many at the same time.
+- **Multiple agent personalities** - Run multiple bots with distinct identities from a single instance. Each group can reference its own bot token (`bot_token_ref`) and gets its own `CLAUDE.md` for personality, memory, and instructions. Your main assistant and a second bot (say, a paralegal for your partner) run side-by-side with no shared context.
 - **Isolated group context** - Each group has its own `CLAUDE.md` memory, isolated filesystem, and runs in its own container sandbox with only that filesystem mounted to it.
 - **Main channel** - Your private channel (self-chat) for admin control; every group is completely isolated
 - **Scheduled tasks** - Recurring jobs that run Claude and can message you back
