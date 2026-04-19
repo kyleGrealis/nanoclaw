@@ -326,6 +326,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     }, IDLE_TIMEOUT);
   };
 
+  const lastMsgId = missedMessages[missedMessages.length - 1].id;
+  await channel.acknowledgeMessage?.(chatJid, lastMsgId);
   await channel.setTyping?.(chatJid, true);
   let hadError = false;
   let outputSentToUser = false;
@@ -364,6 +366,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
   );
 
   await channel.setTyping?.(chatJid, false);
+  await channel.removeAcknowledgement?.(chatJid, lastMsgId);
   if (idleTimer) clearTimeout(idleTimer);
 
   if (output === 'error' || hadError) {

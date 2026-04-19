@@ -212,6 +212,7 @@ export class DiscordChannel implements Channel {
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.GuildMessageReactions,
       ],
     });
 
@@ -578,6 +579,35 @@ export class DiscordChannel implements Channel {
       }
     } catch (err) {
       logger.debug({ jid, err }, 'Failed to send Discord typing indicator');
+    }
+  }
+
+  async acknowledgeMessage(jid: string, msgId: string): Promise<void> {
+    if (!this.client) return;
+    try {
+      const channelId = jid.replace(/^dc:/, '');
+      const channel = await this.client.channels.fetch(channelId);
+      if (!channel || !('messages' in channel)) return;
+      const msg = await (channel as TextChannel).messages.fetch(msgId);
+      await msg.react('👀');
+    } catch (err) {
+      logger.debug({ jid, msgId, err }, 'Failed to add acknowledgement reaction');
+    }
+  }
+
+  async removeAcknowledgement(jid: string, msgId: string): Promise<void> {
+    if (!this.client?.user) return;
+    try {
+      const channelId = jid.replace(/^dc:/, '');
+      const channel = await this.client.channels.fetch(channelId);
+      if (!channel || !('messages' in channel)) return;
+      const msg = await (channel as TextChannel).messages.fetch(msgId);
+      await msg.reactions.cache.get('👀')?.users.remove(this.client.user.id);
+    } catch (err) {
+      logger.debug(
+        { jid, msgId, err },
+        'Failed to remove acknowledgement reaction',
+      );
     }
   }
 }
