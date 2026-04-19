@@ -5,6 +5,7 @@ import {
   Events,
   GatewayIntentBits,
   Message,
+  MessageReaction,
   TextChannel,
 } from 'discord.js';
 
@@ -59,6 +60,9 @@ export class DiscordChannel implements Channel {
   private healthTickTimer: NodeJS.Timeout | null = null;
   private reconnecting = false;
   private connectedAt = 0;
+  // Tracks pending 👀 reactions by message ID so removeAcknowledgement can
+  // remove them directly without relying on the reaction cache.
+  private pendingReactions = new Map<string, MessageReaction>();
 
   constructor(
     botToken: string,
@@ -589,20 +593,24 @@ export class DiscordChannel implements Channel {
       const channel = await this.client.channels.fetch(channelId);
       if (!channel || !('messages' in channel)) return;
       const msg = await (channel as TextChannel).messages.fetch(msgId);
-      await msg.react('👀');
+      const reaction = await msg.react('👀');
+      this.pendingReactions.set(msgId, reaction);
     } catch (err) {
-      logger.debug({ jid, msgId, err }, 'Failed to add acknowledgement reaction');
+      logger.debug(
+        { jid, msgId, err },
+        'Failed to add acknowledgement reaction',
+      );
     }
   }
 
   async removeAcknowledgement(jid: string, msgId: string): Promise<void> {
     if (!this.client?.user) return;
     try {
-      const channelId = jid.replace(/^dc:/, '');
-      const channel = await this.client.channels.fetch(channelId);
-      if (!channel || !('messages' in channel)) return;
-      const msg = await (channel as TextChannel).messages.fetch(msgId);
-      await msg.reactions.cache.get('👀')?.users.remove(this.client.user.id);
+      const reaction = this.pendingReactions.get(msgId);
+      if (reaction) {
+        await reaction.users.remove(this.client.user.id);
+        this.pendingReactions.delete(msgId);
+      }
     } catch (err) {
       logger.debug(
         { jid, msgId, err },
