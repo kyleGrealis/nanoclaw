@@ -5,7 +5,7 @@ import {
   Events,
   GatewayIntentBits,
   Message,
-  MessageReaction,
+  Routes,
   TextChannel,
 } from 'discord.js';
 
@@ -60,9 +60,8 @@ export class DiscordChannel implements Channel {
   private healthTickTimer: NodeJS.Timeout | null = null;
   private reconnecting = false;
   private connectedAt = 0;
-  // Tracks pending 👀 reactions by message ID so removeAcknowledgement can
-  // remove them directly without relying on the reaction cache.
-  private pendingReactions = new Map<string, MessageReaction>();
+  // Tracks message IDs that have a pending 👀 acknowledgement reaction.
+  private pendingReactions = new Set<string>();
 
   constructor(
     botToken: string,
@@ -593,8 +592,8 @@ export class DiscordChannel implements Channel {
       const channel = await this.client.channels.fetch(channelId);
       if (!channel || !('messages' in channel)) return;
       const msg = await (channel as TextChannel).messages.fetch(msgId);
-      const reaction = await msg.react('👀');
-      this.pendingReactions.set(msgId, reaction);
+      await msg.react('👀');
+      this.pendingReactions.add(msgId);
     } catch (err) {
       logger.debug(
         { jid, msgId, err },
@@ -604,13 +603,15 @@ export class DiscordChannel implements Channel {
   }
 
   async removeAcknowledgement(jid: string, msgId: string): Promise<void> {
-    if (!this.client?.user) return;
+    if (!this.client || !this.pendingReactions.has(msgId)) return;
     try {
-      const reaction = this.pendingReactions.get(msgId);
-      if (reaction) {
-        await reaction.users.remove(this.client.user.id);
-        this.pendingReactions.delete(msgId);
-      }
+      const channelId = jid.replace(/^dc:/, '');
+      // DELETE /channels/{channelId}/messages/{msgId}/reactions/{emoji}/@me
+      // Removes only the bot's own reaction — no MANAGE_MESSAGES required.
+      await this.client.rest.delete(
+        Routes.channelMessageOwnReaction(channelId, msgId, encodeURIComponent('👀')),
+      );
+      this.pendingReactions.delete(msgId);
     } catch (err) {
       logger.debug(
         { jid, msgId, err },
