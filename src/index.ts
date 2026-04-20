@@ -366,10 +366,19 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
               ? result.result
               : JSON.stringify(result.result);
           // Strip <internal>...</internal> blocks — agent uses these for internal reasoning
-          const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
-          logger.info({ group: group.name }, `Agent output: ${raw.length} chars`);
+          const text = raw
+            .replace(/<internal>[\s\S]*?<\/internal>/g, '')
+            .trim();
+          logger.info(
+            { group: group.name },
+            `Agent output: ${raw.length} chars`,
+          );
           if (text) {
-            await channel.sendMessage(chatJid, text);
+            if (channel.streamMessage) {
+              await channel.streamMessage(chatJid, text);
+            } else {
+              await channel.sendMessage(chatJid, text);
+            }
             outputSentToUser = true;
           }
           // Only reset idle timer on actual results, not session-update markers (result: null)

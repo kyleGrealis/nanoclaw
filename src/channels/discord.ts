@@ -11,6 +11,7 @@ import {
 import { ASSISTANT_NAME, GROUPS_DIR, TRIGGER_PATTERN } from '../config.js';
 import { readEnvFile } from '../env.js';
 import { downloadImage, processImage } from '../image.js';
+import { downloadAudio, transcribeAudio } from '../audio.js';
 import { downloadPdf } from '../pdf.js';
 import { logger } from '../logger.js';
 import { registerChannel, ChannelOpts } from './registry.js';
@@ -360,8 +361,27 @@ export class DiscordChannel implements Channel {
             attachmentDescriptions.push(placeholder);
           } else if (contentType.startsWith('video/')) {
             attachmentDescriptions.push(`[Video: ${att.name || 'video'}]`);
+          } else if (contentType.startsWith('audio/') && registeredGroup) {
+            let placeholder = `[Voice message: ${att.name || 'audio'}]`;
+            const audioBuffer = await downloadAudio(att.url);
+            if (audioBuffer) {
+              const transcript = await transcribeAudio(
+                audioBuffer,
+                att.name || 'audio.ogg',
+              );
+              if (transcript) {
+                placeholder = `[Voice message: "${transcript}"]`;
+                logger.info(
+                  { chatJid, attachment: att.name, chars: transcript.length },
+                  'Transcribed voice message',
+                );
+              }
+            }
+            attachmentDescriptions.push(placeholder);
           } else if (contentType.startsWith('audio/')) {
-            attachmentDescriptions.push(`[Audio: ${att.name || 'audio'}]`);
+            attachmentDescriptions.push(
+              `[Voice message: ${att.name || 'audio'}]`,
+            );
           } else {
             attachmentDescriptions.push(`[File: ${att.name || 'file'}]`);
           }
@@ -581,6 +601,51 @@ export class DiscordChannel implements Channel {
     }
   }
 
+  async streamMessage(jid: string, text: string): Promise<void> {
+    // Short messages don't need streaming
+    const STREAM_THRESHOLD = 250;
+    if (text.length <= STREAM_THRESHOLD) {
+      return this.sendMessage(jid, text);
+    }
+
+    const MAX_LENGTH = 2000;
+    const CHUNK_SIZE = 350;
+    const EDIT_INTERVAL_MS = 650;
+
+    // Only stream the first Discord message; send any overflow normally
+    const firstPart = text.slice(0, MAX_LENGTH);
+    const overflow = text.slice(MAX_LENGTH);
+
+    try {
+      if (!this.client) return this.sendMessage(jid, text);
+      const channelId = jid.replace(/^dc:/, '');
+      const ch = await this.client.channels.fetch(channelId);
+      if (!ch || !('send' in ch)) return this.sendMessage(jid, text);
+      const textChannel = ch as TextChannel;
+
+      // Send initial chunk
+      const sentMsg = await textChannel.send(firstPart.slice(0, CHUNK_SIZE));
+
+      // Edit to progressively reveal the full first message
+      let cursor = CHUNK_SIZE;
+      while (cursor < firstPart.length) {
+        await new Promise<void>((r) => setTimeout(r, EDIT_INTERVAL_MS));
+        cursor = Math.min(cursor + CHUNK_SIZE, firstPart.length);
+        await sentMsg.edit(firstPart.slice(0, cursor));
+      }
+
+      // Send overflow as separate messages (no streaming on these)
+      for (let i = 0; i < overflow.length; i += MAX_LENGTH) {
+        await textChannel.send(overflow.slice(i, i + MAX_LENGTH));
+      }
+    } catch (err) {
+      logger.error(
+        { jid, err },
+        'Failed to stream Discord message, falling back',
+      );
+      await this.sendMessage(jid, text);
+    }
+  }
 }
 
 registerChannel('discord', (opts: ChannelOpts) => {

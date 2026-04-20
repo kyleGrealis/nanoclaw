@@ -97,6 +97,9 @@ export interface Channel {
   disconnect(): Promise<void>;
   // Optional: typing indicator. Channels that support it implement it.
   setTyping?(jid: string, isTyping: boolean): Promise<void>;
+  // Optional: stream a message in visible chunks (progressive reveal).
+  // Falls back to sendMessage for channels that don't support it.
+  streamMessage?(jid: string, text: string): Promise<void>;
   // Optional: sync group/chat names from the platform.
   syncGroups?(force: boolean): Promise<void>;
 }

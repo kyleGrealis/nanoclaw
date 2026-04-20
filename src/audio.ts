@@ -47,11 +47,14 @@ export async function transcribeAudio(
       form.append('file', blob, filename);
       form.append('model', 'whisper-1');
 
-      const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}` },
-        body: form,
-      });
+      const res = await fetch(
+        'https://api.openai.com/v1/audio/transcriptions',
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${apiKey}` },
+          body: form,
+        },
+      );
 
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
@@ -65,7 +68,11 @@ export async function transcribeAudio(
       const data = (await res.json()) as { text?: string };
       return data.text?.trim() || null;
     } finally {
-      try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+      try {
+        fs.unlinkSync(tmpPath);
+      } catch {
+        /* ignore */
+      }
     }
   } catch (err) {
     logger.warn({ err }, 'Voice transcription failed');
