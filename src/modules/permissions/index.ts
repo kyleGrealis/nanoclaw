@@ -64,11 +64,17 @@ function extractAndUpsertUser(event: InboundEvent): string | null {
   const rawHandle = senderIdField ?? senderField ?? authorUserId;
   if (!rawHandle) return null;
 
-  const userId = rawHandle.includes(':') ? rawHandle : `${event.channelType}:${rawHandle}`;
+  // NanoClaw fork: the one-bot-per-file pattern (discord-andy, discord-milton, …)
+  // uses distinct channel_types on the NanoClaw side, but the underlying platform
+  // user is the same person regardless of which bot they're DMing. Collapse
+  // `discord-<persona>` channel_types to `discord` for user identity so roles
+  // and memberships apply across bots. See /create-bot skill.
+  const userKind = event.channelType.startsWith('discord-') ? 'discord' : event.channelType;
+  const userId = rawHandle.includes(':') ? rawHandle : `${userKind}:${rawHandle}`;
   if (!getUser(userId)) {
     upsertUser({
       id: userId,
-      kind: event.channelType,
+      kind: userKind,
       display_name: senderName ?? null,
       created_at: new Date().toISOString(),
     });

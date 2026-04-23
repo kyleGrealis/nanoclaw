@@ -72,6 +72,15 @@ export interface ChatSdkBridgeConfig {
    * and reactions still target the head of the reply.
    */
   maxTextLength?: number;
+  /**
+   * Override the channel_type exposed to NanoClaw (bridge.name + bridge.channelType).
+   * Defaults to adapter.name (the Chat SDK adapter's internal name, e.g. 'discord').
+   * Use this for the one-bot-per-file pattern — e.g. a second Discord bot for a
+   * different persona registers its adapter with channelType='discord-milton' so
+   * inbound events route to its own messaging_groups rather than the default 'discord'
+   * ones. See /create-bot skill.
+   */
+  channelType?: string;
 }
 
 /**
@@ -165,9 +174,10 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
     };
   }
 
+  const bridgeChannelType = config.channelType ?? adapter.name;
   const bridge: ChannelAdapter = {
-    name: adapter.name,
-    channelType: adapter.name,
+    name: bridgeChannelType,
+    channelType: bridgeChannelType,
     supportsThreads: config.supportsThreads,
 
     async setup(hostConfig: ChannelSetup) {
