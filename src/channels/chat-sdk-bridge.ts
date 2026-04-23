@@ -130,6 +130,12 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
           size: att.size,
           width: (att as unknown as Record<string, unknown>).width,
           height: (att as unknown as Record<string, unknown>).height,
+          // Propagate the platform URL so the container can fetch when the
+          // Chat SDK adapter doesn't implement fetchData for this type.
+          // Discord adapter only implements fetchData for image/* and text
+          // file types — PDFs and other binaries arrive with no bytes unless
+          // we give the container a URL to fall back on.
+          url: (att as unknown as Record<string, unknown>).url,
         };
         if (att.fetchData) {
           try {

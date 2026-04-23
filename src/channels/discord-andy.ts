@@ -39,6 +39,7 @@ registerChannelAdapter('discord-andy', {
       botToken: env.DISCORD_BOT_TOKEN_ANDY,
       extractReplyContext,
       supportsThreads: false, // inline replies in server channels (v1-style)
+      maxTextLength: 2000, // Discord hard limit — chunk longer replies
     });
   },
 });

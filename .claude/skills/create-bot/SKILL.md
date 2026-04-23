@@ -132,6 +132,7 @@ registerChannelAdapter('discord-<bot-name-lower>', {
       supportsThreads: false, // inline replies in server channels — flip to true if
                               // the bot will juggle many parallel conversations and
                               // benefits from Discord threads keeping them separate
+      maxTextLength: 2000, // Discord hard limit — splits longer replies into chunks
     });
   },
 });
