@@ -175,6 +175,15 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
   }
 
   const bridgeChannelType = config.channelType ?? adapter.name;
+  // When channelType is overridden (one-bot-per-file Pattern Y), also override
+  // the Chat-SDK adapter's .name so its internal dedup namespace becomes
+  // per-bot. Otherwise all Discord-based bots share `dedupe:discord:<msgId>`
+  // and whichever adapter sees a Gateway event first claims it, making the
+  // actually-wired adapter skip the message as "duplicate". See /create-bot.
+  if (config.channelType) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (adapter as any).name = config.channelType;
+  }
   const bridge: ChannelAdapter = {
     name: bridgeChannelType,
     channelType: bridgeChannelType,

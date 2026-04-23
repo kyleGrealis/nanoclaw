@@ -11,6 +11,26 @@
 
 set -e
 
+# Register current uid in /etc/passwd if missing. SSH's getpwuid() needs a
+# passwd entry to resolve $HOME / ~/.ssh. Docker's user-namespace mapping
+# can give us an arbitrary uid at runtime, so we register it here.
+if ! getent passwd "$(id -u)" > /dev/null 2>&1; then
+  echo "node:x:$(id -u):$(id -g):node:/home/node:/bin/bash" >> /etc/passwd
+fi
+
+# Wire SSH credentials from the read-only andy-ssh mount, when present.
+# Host mount: ~/.config/nanoclaw/ssh/ → /workspace/extra/andy-ssh/
+if [ -d /workspace/extra/andy-ssh ]; then
+  mkdir -p ~/.ssh
+  cp /workspace/extra/andy-ssh/config         ~/.ssh/config         2>/dev/null || true
+  cp /workspace/extra/andy-ssh/id_ed25519     ~/.ssh/id_ed25519     2>/dev/null || true
+  cp /workspace/extra/andy-ssh/id_ed25519.pub ~/.ssh/id_ed25519.pub 2>/dev/null || true
+  cp /workspace/extra/andy-ssh/known_hosts    ~/.ssh/known_hosts    2>/dev/null || true
+  chmod 700 ~/.ssh
+  chmod 600 ~/.ssh/id_ed25519 ~/.ssh/config 2>/dev/null || true
+  chmod 644 ~/.ssh/known_hosts ~/.ssh/id_ed25519.pub 2>/dev/null || true
+fi
+
 cat > /tmp/input.json
 
 exec bun run /app/src/index.ts < /tmp/input.json

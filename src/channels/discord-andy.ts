@@ -25,11 +25,7 @@ function extractReplyContext(raw: Record<string, any>): ReplyContext | null {
 
 registerChannelAdapter('discord-andy', {
   factory: () => {
-    const env = readEnvFile([
-      'DISCORD_BOT_TOKEN_ANDY',
-      'DISCORD_PUBLIC_KEY_ANDY',
-      'DISCORD_APPLICATION_ID_ANDY',
-    ]);
+    const env = readEnvFile(['DISCORD_BOT_TOKEN_ANDY', 'DISCORD_PUBLIC_KEY_ANDY', 'DISCORD_APPLICATION_ID_ANDY']);
     if (!env.DISCORD_BOT_TOKEN_ANDY) return null;
     const discordAdapter = createDiscordAdapter({
       botToken: env.DISCORD_BOT_TOKEN_ANDY,

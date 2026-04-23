@@ -437,7 +437,35 @@ async function buildContainerArgs(
   const imageTag = containerConfig.imageTag || CONTAINER_IMAGE;
   args.push(imageTag);
 
-  args.push('-c', 'exec bun run /app/src/index.ts');
+  // Prelude runs before bun:
+  //   (1) Register the container's uid in /etc/passwd. Docker's user-namespace
+  //       mapping gives us a host uid (e.g. 1002) that has no passwd entry
+  //       inside the image. SSH's getpwuid() requires one to resolve $HOME
+  //       and ~/.ssh; without it, ssh fails immediately.
+  //   (2) If an andy-ssh mount is present (agent-declared additionalMount
+  //       with containerPath 'andy-ssh'), wire ~/.ssh/ from it so the agent
+  //       can `ssh` outbound. The mount is read-only; we copy into ~/.ssh
+  //       (writable) and set conservative perms (600/644/700).
+  // Both steps are idempotent and best-effort (`|| true`) so they can't
+  // block bun startup. Container image must have openssh-client installed
+  // for the ssh binary; the `cp` chain works without it.
+  const prelude = [
+    'if ! getent passwd "$(id -u)" > /dev/null 2>&1; then',
+    '  echo "node:x:$(id -u):$(id -g):node:/home/node:/bin/bash" >> /etc/passwd;',
+    'fi;',
+    'if [ -d /workspace/extra/andy-ssh ]; then',
+    '  mkdir -p ~/.ssh;',
+    '  cp /workspace/extra/andy-ssh/config         ~/.ssh/config         2>/dev/null || true;',
+    '  cp /workspace/extra/andy-ssh/id_ed25519     ~/.ssh/id_ed25519     2>/dev/null || true;',
+    '  cp /workspace/extra/andy-ssh/id_ed25519.pub ~/.ssh/id_ed25519.pub 2>/dev/null || true;',
+    '  cp /workspace/extra/andy-ssh/known_hosts    ~/.ssh/known_hosts    2>/dev/null || true;',
+    '  chmod 700 ~/.ssh 2>/dev/null || true;',
+    '  chmod 600 ~/.ssh/id_ed25519 ~/.ssh/config 2>/dev/null || true;',
+    '  chmod 644 ~/.ssh/known_hosts ~/.ssh/id_ed25519.pub 2>/dev/null || true;',
+    'fi;',
+  ].join(' ');
+
+  args.push('-c', `${prelude} exec bun run /app/src/index.ts`);
 
   return args;
 }

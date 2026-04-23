@@ -51,10 +51,23 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         git \
         tini \
         unzip \
+        openssh-client \
+        poppler-utils \
+        python3 \
     && if [ "$INSTALL_CJK_FONTS" = "true" ]; then \
         apt-get install -y --no-install-recommends fonts-noto-cjk; \
        fi \
     && rm -rf /var/lib/apt/lists/*
+
+# Make /etc/passwd writable at runtime so the entrypoint can register
+# whatever uid the Docker user namespace gives us. SSH's getpwuid() needs
+# a passwd entry to resolve $HOME correctly.
+RUN chmod 666 /etc/passwd
+
+# Container skill CLIs on $PATH
+COPY skills/pdf-reader/pdf-reader /usr/local/bin/pdf-reader
+COPY skills/brave-search/brave-search /usr/local/bin/brave-search
+RUN chmod +x /usr/local/bin/pdf-reader /usr/local/bin/brave-search
 
 # Chromium path for agent-browser / Playwright consumers
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
