@@ -555,8 +555,13 @@ async function runQuery(
         ...(fs.existsSync('/workspace/extra/google-calendar-mcp/gcp-oauth.keys.json')
           ? {
               google_calendar: {
-                command: 'npx',
-                args: ['-y', '@cocal/google-calendar-mcp'],
+                // Use pre-installed package from persistent mount instead of npx -y
+                // (npx downloads fresh from npm each container start = slow/unreliable)
+                // Package installed to: ~/.config/google-calendar-mcp/node_modules/
+                command: 'node',
+                args: [
+                  '/workspace/extra/google-calendar-mcp/node_modules/@cocal/google-calendar-mcp/build/index.js',
+                ],
                 env: {
                   GOOGLE_OAUTH_CREDENTIALS:
                     '/workspace/extra/google-calendar-mcp/gcp-oauth.keys.json',
