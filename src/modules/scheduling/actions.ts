@@ -10,11 +10,51 @@
 import type Database from 'better-sqlite3';
 
 import { wakeContainer } from '../../container-runner.js';
+import { openInboundDb as openInboundDbRaw } from '../../db/session-db.js';
 import { getSession } from '../../db/sessions.js';
 import { log } from '../../log.js';
-import { writeSessionMessage } from '../../session-manager.js';
+import { inboundDbPath, writeSessionMessage } from '../../session-manager.js';
 import type { Session } from '../../types.js';
 import { cancelTask, insertTask, pauseTask, resumeTask, updateTask, type TaskUpdate } from './db.js';
+
+/**
+ * Resolve the inbound.db the action should operate on.
+ *
+ * If `content.targetSessionId` is present, open that session's inbound.db
+ * instead of the caller's — used for cross-session task management. The
+ * target must belong to the same agent_group as the caller; otherwise the
+ * caller could manipulate another agent's tasks. Returns null on violation.
+ *
+ * When a target DB is opened, the caller owns closing it (via `close`).
+ * When no target is specified, `close` is a no-op — the caller's inDb
+ * lifetime is managed by delivery.ts.
+ */
+function resolveTargetInDb(
+  content: Record<string, unknown>,
+  session: Session,
+  inDb: Database.Database,
+): { inDb: Database.Database; close: () => void; targetSessionId: string | null } | null {
+  const targetSessionId = content.targetSessionId as string | undefined;
+  if (!targetSessionId || targetSessionId === session.id) {
+    return { inDb, close: () => {}, targetSessionId: null };
+  }
+  const target = getSession(targetSessionId);
+  if (!target) {
+    log.warn('Cross-session task op: target session not found', { targetSessionId });
+    return null;
+  }
+  if (target.agent_group_id !== session.agent_group_id) {
+    log.warn('Cross-session task op: agent group mismatch (denied)', {
+      callerSessionId: session.id,
+      callerAgentGroup: session.agent_group_id,
+      targetSessionId,
+      targetAgentGroup: target.agent_group_id,
+    });
+    return null;
+  }
+  const targetDb = openInboundDbRaw(inboundDbPath(target.agent_group_id, target.id));
+  return { inDb: targetDb, close: () => targetDb.close(), targetSessionId };
+}
 
 export async function handleScheduleTask(
   content: Record<string, unknown>,
@@ -41,32 +81,50 @@ export async function handleScheduleTask(
 
 export async function handleCancelTask(
   content: Record<string, unknown>,
-  _session: Session,
+  session: Session,
   inDb: Database.Database,
 ): Promise<void> {
   const taskId = content.taskId as string;
-  cancelTask(inDb, taskId);
-  log.info('Task cancelled', { taskId });
+  const resolved = resolveTargetInDb(content, session, inDb);
+  if (!resolved) return;
+  try {
+    cancelTask(resolved.inDb, taskId);
+    log.info('Task cancelled', { taskId, targetSessionId: resolved.targetSessionId });
+  } finally {
+    resolved.close();
+  }
 }
 
 export async function handlePauseTask(
   content: Record<string, unknown>,
-  _session: Session,
+  session: Session,
   inDb: Database.Database,
 ): Promise<void> {
   const taskId = content.taskId as string;
-  pauseTask(inDb, taskId);
-  log.info('Task paused', { taskId });
+  const resolved = resolveTargetInDb(content, session, inDb);
+  if (!resolved) return;
+  try {
+    pauseTask(resolved.inDb, taskId);
+    log.info('Task paused', { taskId, targetSessionId: resolved.targetSessionId });
+  } finally {
+    resolved.close();
+  }
 }
 
 export async function handleResumeTask(
   content: Record<string, unknown>,
-  _session: Session,
+  session: Session,
   inDb: Database.Database,
 ): Promise<void> {
   const taskId = content.taskId as string;
-  resumeTask(inDb, taskId);
-  log.info('Task resumed', { taskId });
+  const resolved = resolveTargetInDb(content, session, inDb);
+  if (!resolved) return;
+  try {
+    resumeTask(resolved.inDb, taskId);
+    log.info('Task resumed', { taskId, targetSessionId: resolved.targetSessionId });
+  } finally {
+    resolved.close();
+  }
 }
 
 export async function handleUpdateTask(
@@ -84,8 +142,20 @@ export async function handleUpdateTask(
   if (content.script === null || typeof content.script === 'string') {
     update.script = content.script as string | null;
   }
-  const touched = updateTask(inDb, taskId, update);
-  log.info('Task updated', { taskId, touched, fields: Object.keys(update) });
+  const resolved = resolveTargetInDb(content, session, inDb);
+  if (!resolved) return;
+  let touched: number;
+  try {
+    touched = updateTask(resolved.inDb, taskId, update);
+  } finally {
+    resolved.close();
+  }
+  log.info('Task updated', {
+    taskId,
+    touched,
+    fields: Object.keys(update),
+    targetSessionId: resolved.targetSessionId,
+  });
   if (touched === 0) {
     // Notify the agent that update_task matched nothing. Replicates the
     // old notifyAgent helper that used to live in delivery.ts — inlined

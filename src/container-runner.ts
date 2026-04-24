@@ -258,6 +258,19 @@ function buildMounts(
   // skill symlinks)
   mounts.push({ hostPath: claudeDir, containerPath: '/home/node/.claude', readonly: false });
 
+  // Sibling sessions for this agent group — read-only. Lets the container
+  // aggregate scheduled tasks across all the agent's wired channels (the
+  // "discord_main can see discord_weather's tasks" case). Scoped to this
+  // agent_group_id so agents cannot read other agents' session DBs. The own
+  // session's dir is included — the MCP tool filters it out by matching
+  // routing rows. Read-only is load-bearing: the host is the sole writer of
+  // every sibling inbound.db, and cross-mount writes from the container
+  // would corrupt the journal.
+  const agentGroupSessionsDir = path.join(DATA_DIR, 'v2-sessions', agentGroup.id);
+  if (fs.existsSync(agentGroupSessionsDir)) {
+    mounts.push({ hostPath: agentGroupSessionsDir, containerPath: '/workspace/siblings', readonly: true });
+  }
+
   // Shared agent-runner source — read-only, same code for all groups.
   const agentRunnerSrc = path.join(projectRoot, 'container', 'agent-runner', 'src');
   mounts.push({ hostPath: agentRunnerSrc, containerPath: '/app/src', readonly: true });

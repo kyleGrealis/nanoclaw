@@ -113,7 +113,9 @@
       "Bash(python3 *)",
       "Bash(echo \"exit: $?\")",
       "Bash(pnpm test *)",
-      "Bash(bun test *)"
+      "Bash(bun test *)",
+      "Bash(pnpm run *)",
+      "Bash(bun run *)"
     ]
   }
 }
