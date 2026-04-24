@@ -259,6 +259,39 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
         await setupConfig.onInbound(channelId, thread.id, await messageToInbound(message, false));
       });
 
+      // Emoji reactions — receive reactions on any message the bot can see.
+      // We route these as kind='reaction' inbound messages. The router has a
+      // dedicated path that writes them into every wired agent's session DB
+      // without triggering auto-create, engage checks, or typing indicators.
+      // Self-reactions (echoes of the bot's own add_reaction tool) are filtered.
+      chat.onReaction(async (event) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const user = event.user as any;
+        if (user?.isMe || user?.isBot) return;
+        const channelId = adapter.channelIdFromThreadId(event.threadId);
+        const content = {
+          emoji: String(event.emoji),
+          rawEmoji: event.rawEmoji,
+          added: event.added,
+          targetMessageId: event.messageId,
+          senderId: user?.userId,
+          sender: user?.fullName ?? user?.userName ?? user?.userId,
+          senderName: user?.fullName ?? user?.userName ?? user?.userId,
+          author: {
+            userId: user?.userId,
+            fullName: user?.fullName,
+            userName: user?.userName,
+          },
+        };
+        await setupConfig.onInbound(channelId, event.threadId, {
+          id: `rxn-${event.messageId}-${event.rawEmoji}-${event.added ? 'add' : 'del'}-${Date.now()}`,
+          kind: 'reaction',
+          content,
+          timestamp: new Date().toISOString(),
+          isMention: false,
+        });
+      });
+
       // Handle button clicks (ask_user_question)
       chat.onAction(async (event) => {
         if (!event.actionId.startsWith('ncq:')) return;

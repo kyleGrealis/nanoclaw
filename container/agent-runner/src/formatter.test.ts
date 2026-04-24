@@ -165,3 +165,46 @@ describe('stripInternalTags', () => {
     );
   });
 });
+
+describe('reaction messages', () => {
+  it('renders an added reaction as <reaction/>', () => {
+    insertMessage('r1', 'reaction', {
+      sender: 'Kyle',
+      emoji: '👍',
+      rawEmoji: '👍',
+      added: true,
+      targetMessageId: 'abc-123',
+    });
+    const result = formatMessages(getPendingMessages());
+    expect(result).toContain('<reaction');
+    expect(result).toContain('sender="Kyle"');
+    expect(result).toContain('emoji="👍"');
+    expect(result).toContain('on_msg="abc-123"');
+  });
+
+  it('renders a removed reaction as <reaction_removed/>', () => {
+    insertMessage('r2', 'reaction', {
+      sender: 'Kyle',
+      emoji: '👍',
+      rawEmoji: '👍',
+      added: false,
+      targetMessageId: 'abc-123',
+    });
+    const result = formatMessages(getPendingMessages());
+    expect(result).toContain('<reaction_removed');
+    expect(result).toContain('emoji="👍"');
+  });
+
+  it('escapes XML in sender and emoji attributes', () => {
+    insertMessage('r3', 'reaction', {
+      sender: 'a<b>c',
+      rawEmoji: '"bad"',
+      added: true,
+      targetMessageId: 'id&1',
+    });
+    const result = formatMessages(getPendingMessages());
+    expect(result).toContain('sender="a&lt;b&gt;c"');
+    expect(result).toContain('emoji="&quot;bad&quot;"');
+    expect(result).toContain('on_msg="id&amp;1"');
+  });
+});

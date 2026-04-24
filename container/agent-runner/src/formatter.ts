@@ -120,6 +120,7 @@ export function formatMessages(messages: MessageInRow[]): string {
 
   // Group by kind
   const chatMessages = messages.filter((m) => m.kind === 'chat' || m.kind === 'chat-sdk');
+  const reactionMessages = messages.filter((m) => m.kind === 'reaction');
   const taskMessages = messages.filter((m) => m.kind === 'task');
   const webhookMessages = messages.filter((m) => m.kind === 'webhook');
   const systemMessages = messages.filter((m) => m.kind === 'system');
@@ -128,6 +129,9 @@ export function formatMessages(messages: MessageInRow[]): string {
 
   if (chatMessages.length > 0) {
     parts.push(formatChatMessages(chatMessages));
+  }
+  if (reactionMessages.length > 0) {
+    parts.push(...reactionMessages.map(formatReactionMessage));
   }
   if (taskMessages.length > 0) {
     parts.push(...taskMessages.map(formatTaskMessage));
@@ -177,6 +181,19 @@ function formatSingleChat(msg: MessageInRow): string {
       : '';
 
   return `<message${idAttr}${fromAttr} sender="${escapeXml(sender)}" time="${escapeXml(time)}"${replyAttr}>${replyPrefix}${escapeXml(text)}${attachmentsSuffix}</message>`;
+}
+
+function formatReactionMessage(msg: MessageInRow): string {
+  const content = parseContent(msg.content);
+  const sender = content.sender || content.author?.fullName || content.author?.userName || 'Unknown';
+  const time = formatLocalTime(msg.timestamp, TIMEZONE);
+  const emoji = content.rawEmoji || content.emoji || '?';
+  const target = content.targetMessageId || '';
+  const fromDest = findByRouting(msg.channel_type, msg.platform_id);
+  const fromAttr = fromDest ? ` from="${escapeXml(fromDest.name)}"` : '';
+  const targetAttr = target ? ` on_msg="${escapeXml(String(target))}"` : '';
+  const tag = content.added === false ? 'reaction_removed' : 'reaction';
+  return `<${tag}${fromAttr} sender="${escapeXml(sender)}" emoji="${escapeXml(emoji)}"${targetAttr} time="${escapeXml(time)}"/>`;
 }
 
 function formatTaskMessage(msg: MessageInRow): string {

@@ -149,6 +149,12 @@ export async function routeInbound(event: InboundEvent): Promise<void> {
     event = { ...event, threadId: null };
   }
 
+  // Reactions take a narrower path: no auto-create, no engage check, no
+  // typing indicator. They fan out to every wired agent and wake in DMs.
+  if (event.message.kind === 'reaction') {
+    return routeReaction(event);
+  }
+
   const isMention = event.message.isMention === true;
 
   // 1. Combined lookup: messaging_group row + count of wired agents in a
@@ -464,4 +470,69 @@ async function deliverToAgent(
 function messageIdForAgent(baseId: string | undefined, agentGroupId: string): string {
   const id = baseId && baseId.length > 0 ? baseId : generateId();
   return `${id}:${agentGroupId}`;
+}
+
+/**
+ * Route a reaction event (kind='reaction') to every wired agent's session.
+ *
+ * Drops silently if the channel isn't wired — reactions on random chatter
+ * shouldn't auto-create messaging groups or ping channel-request approvals.
+ * Writes the reaction into each wired agent's existing session (or creates
+ * one under the normal resolveSession rules). Wake policy:
+ *   - DMs (is_group=0): trigger=1, wake the container so the agent sees it live
+ *   - Group channels: trigger=0, accumulate for context; the agent picks it up
+ *     the next time a real message wakes it
+ *
+ * No engage check (reactions aren't engage events) and no command gate
+ * (they're never slash commands). No typing indicator (reactions don't
+ * warrant a "thinking…" UI).
+ */
+async function routeReaction(event: InboundEvent): Promise<void> {
+  const found = getMessagingGroupWithAgentCount(event.channelType, event.platformId);
+  if (!found || found.agentCount === 0) return;
+  const { mg } = found;
+
+  const userId: string | null = senderResolver ? senderResolver(event) : null;
+  const agents = getMessagingGroupAgents(mg.id);
+  const adapterSupportsThreads = adapter_supportsThreads(event.channelType);
+  const wake = mg.is_group === 0; // wake on DM reactions only
+
+  for (const agent of agents) {
+    const agentGroup = getAgentGroup(agent.agent_group_id);
+    if (!agentGroup) continue;
+
+    let effectiveSessionMode = agent.session_mode;
+    if (adapterSupportsThreads && effectiveSessionMode !== 'agent-shared' && mg.is_group !== 0) {
+      effectiveSessionMode = 'per-thread';
+    }
+
+    const { session } = resolveSession(agent.agent_group_id, mg.id, event.threadId, effectiveSessionMode);
+
+    writeSessionMessage(session.agent_group_id, session.id, {
+      id: messageIdForAgent(event.message.id, agent.agent_group_id),
+      kind: event.message.kind,
+      timestamp: event.message.timestamp,
+      platformId: event.platformId,
+      channelType: event.channelType,
+      threadId: event.threadId,
+      content: event.message.content,
+      trigger: wake ? 1 : 0,
+    });
+
+    log.info('Reaction routed', {
+      sessionId: session.id,
+      agentGroup: agent.agent_group_id,
+      userId,
+      wake,
+    });
+
+    if (wake) {
+      const freshSession = getSession(session.id);
+      if (freshSession) await wakeContainer(freshSession);
+    }
+  }
+}
+
+function adapter_supportsThreads(channelType: string): boolean {
+  return getChannelAdapter(channelType)?.supportsThreads === true;
 }
