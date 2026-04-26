@@ -25,11 +25,16 @@ if [ -d /workspace/extra/andy-ssh ]; then
   cp /workspace/extra/andy-ssh/config         ~/.ssh/config         2>/dev/null || true
   cp /workspace/extra/andy-ssh/id_ed25519     ~/.ssh/id_ed25519     2>/dev/null || true
   cp /workspace/extra/andy-ssh/id_ed25519.pub ~/.ssh/id_ed25519.pub 2>/dev/null || true
+  cp /workspace/extra/andy-ssh/andy-github    ~/.ssh/andy-github    2>/dev/null || true
   cp /workspace/extra/andy-ssh/known_hosts    ~/.ssh/known_hosts    2>/dev/null || true
   chmod 700 ~/.ssh
-  chmod 600 ~/.ssh/id_ed25519 ~/.ssh/config 2>/dev/null || true
+  chmod 600 ~/.ssh/id_ed25519 ~/.ssh/andy-github ~/.ssh/config 2>/dev/null || true
   chmod 644 ~/.ssh/known_hosts ~/.ssh/id_ed25519.pub 2>/dev/null || true
 fi
+
+# Set git identity so commits don't fail with "Author identity unknown".
+git config --global user.email "kyl3gr3alis@gmail.com"
+git config --global user.name "Kyle Grealis"
 
 cat > /tmp/input.json
 
