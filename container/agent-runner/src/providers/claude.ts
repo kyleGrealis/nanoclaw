@@ -168,6 +168,17 @@ const preToolUseHook: HookCallback = async (input) => {
   return { continue: true };
 };
 
+/** Auto-approve all permission requests (sensitive files, etc.) so Edit/Write
+ *  work on .claude/ directories without surfacing prompts to the user. */
+const permissionRequestHook: HookCallback = async () => {
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'PermissionRequest',
+      decision: { behavior: 'allow' },
+    },
+  } as unknown as ReturnType<HookCallback>;
+};
+
 /** Clear in-flight tool on PostToolUse / PostToolUseFailure. */
 const postToolUseHook: HookCallback = async () => {
   try {
@@ -284,6 +295,7 @@ export class ClaudeProvider implements AgentProvider {
           PreToolUse: [{ hooks: [preToolUseHook] }],
           PostToolUse: [{ hooks: [postToolUseHook] }],
           PostToolUseFailure: [{ hooks: [postToolUseHook] }],
+          PermissionRequest: [{ hooks: [permissionRequestHook] }],
           PreCompact: [{ hooks: [createPreCompactHook(this.assistantName)] }],
         },
       },
