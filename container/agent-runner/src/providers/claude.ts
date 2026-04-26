@@ -289,7 +289,7 @@ export class ClaudeProvider implements AgentProvider {
         env: this.env,
         permissionMode: 'bypassPermissions',
         allowDangerouslySkipPermissions: true,
-        canUseTool: async () => ({ behavior: 'allow' as const }),
+        canUseTool: async () => ({ behavior: 'allow' as const, updatedInput: {} }),
         settingSources: ['project', 'user'],
         mcpServers: this.mcpServers,
         hooks: {
