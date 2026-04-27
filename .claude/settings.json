@@ -6,7 +6,22 @@
       "Bash(git push*)",
       "Bash(git pull*)",
       "Bash(git fetch*)",
-      "Bash(git clone*)"
+      "Bash(git clone*)",
+      "Bash(journalctl --user *)",
+      "Bash(docker logs *)",
+      "Bash(docker inspect *)",
+      "Bash(trash-put *)",
+      "Bash(onecli *)",
+      "Bash(pgrep *)",
+      "Bash(stat *)",
+      "Bash(readlink *)",
+      "Bash(which *)",
+      "Bash(systemctl --user is-active *)",
+      "Bash(systemctl --user status *)",
+      "Bash(npm view *)",
+      "Bash(sqlite3 /home/kyle/nanoclaw/data/*)",
+      "Bash(sqlite3 /home/kyle/nanoclaw/store/*)",
+      "Bash(awk *)"
     ]
   },
   "sandbox": {

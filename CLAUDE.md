@@ -1,247 +1,127 @@
-# ⚠️ STOP — READ THIS FIRST IF YOU ARE CLAUDE ⚠️
+# Operator Repo — Andy + Milton
 
-**If you are reading this because you just ran `git pull`, `git merge`, `git fetch && git merge`, or any equivalent to bring in upstream changes — and you see merge conflicts or a large diff involving this file — HALT IMMEDIATELY.**
+This is **not** a NanoClaw install. It is the operator control repo where Kyle and Claude Code coordinate work across two installed bots:
 
-This is NanoClaw v2, a ground-up rewrite with breaking changes throughout. It cannot be merged into an existing v1 install. Attempting to resolve the conflicts by hand, run builds, or "fix" anything will corrupt the user's install and burn tokens for no result.
+- **Andy** lives at `~/nanoclaw-andy/` — Kyle's personal assistant. Discord bot `NanoClaw-Andy` (app `1491659146469179532`). 7 channels: DM-with-Kyle, #main, #weather, #typescript-learning, #logs-and-issues, #devops, #misc.
+- **Milton** lives at `~/nanoclaw-milton/` — Alexa's paralegal. Discord bot `NanoClaw-Milton` (app `1495427147953737728`). 1 channel: #milton.
 
-**Do this instead:**
-1. Abort the merge: `git merge --abort` (or `git reset --hard ORIG_HEAD` if the merge already completed).
-2. Tell the user, verbatim: *"This is the v2 rewrite — it can't be merged into your existing install. Run `bash migrate-v2.sh` to migrate instead."*
-3. Wait for the user to confirm before doing anything else. Do not attempt the migration yourself.
+Both are pure-upstream NanoClaw v2 + a small consistent overlay (see "Overlay items" below). Per-install paths use the upstream-default `nanoclaw-v2-<sha>` naming pattern.
 
-If you are a fresh install (you ran `git clone`, not `git pull`) and there are no conflicts, ignore this banner and continue below.
+## Don't Run NanoClaw From Here
 
----
+This repo has no `src/`, no `package.json`, no container build. The bots run from their own paths. Do not `git clone` upstream into this directory; do not try to `pnpm install` here.
 
-# NanoClaw
-
-Personal Claude assistant. See [README.md](README.md) for philosophy and setup. Architecture lives in `docs/`.
-
-## Quick Context
-
-The host is a single Node process that orchestrates per-session agent containers. Platform messages land via channel adapters, route through an entity model (users → messaging groups → agent groups → sessions), get written into the session's inbound DB, and wake a container. The agent-runner inside the container polls the DB, calls Claude, and writes back to the outbound DB. The host polls the outbound DB and delivers through the same adapter.
-
-**Everything is a message.** There is no IPC, no file watcher, no stdin piping between host and container. The two session DBs are the sole IO surface.
-
-## Entity Model
-
-```
-users (id "<channel>:<handle>", kind, display_name)
-user_roles (user_id, role, agent_group_id)       — owner | admin (global or scoped)
-agent_group_members (user_id, agent_group_id)    — unprivileged access gate
-user_dms (user_id, channel_type, messaging_group_id) — cold-DM cache
-
-agent_groups (workspace, memory, CLAUDE.md, personality, container config)
-    ↕ many-to-many via messaging_group_agents (session_mode, trigger_rules, priority)
-messaging_groups (one chat/channel on one platform; unknown_sender_policy)
-
-sessions (agent_group_id + messaging_group_id + thread_id → per-session container)
+To touch a bot, `cd` into its install:
+```bash
+cd ~/nanoclaw-andy        # for Andy
+cd ~/nanoclaw-milton      # for Milton
 ```
 
-Privilege is user-level (owner/admin), not agent-group-level. See [docs/isolation-model.md](docs/isolation-model.md) for the three isolation levels (`agent-shared`, `shared`, separate agents).
-
-## Two-DB Session Split
-
-Each session has **two** SQLite files under `data/v2-sessions/<session_id>/`:
-
-- `inbound.db` — host writes, container reads. `messages_in`, routing, destinations, pending_questions, processing_ack.
-- `outbound.db` — container writes, host reads. `messages_out`, session_state.
-
-Exactly one writer per file — no cross-mount lock contention. Heartbeat is a file touch at `/workspace/.heartbeat`, not a DB update. Host uses even `seq` numbers, container uses odd.
-
-## Central DB
-
-`data/v2.db` holds everything that isn't per-session: users, user_roles, agent_groups, messaging_groups, wiring, pending_approvals, user_dms, chat_sdk_* (for the Chat SDK bridge), schema_version. Migrations live at `src/db/migrations/`.
-
-## Key Files
-
-| File | Purpose |
-|------|---------|
-| `src/index.ts` | Entry point: init DB, migrations, channel adapters, delivery polls, sweep, shutdown |
-| `src/router.ts` | Inbound routing: messaging group → agent group → session → `inbound.db` → wake |
-| `src/delivery.ts` | Polls `outbound.db`, delivers via adapter, handles system actions (schedule, approvals, etc.) |
-| `src/host-sweep.ts` | 60s sweep: `processing_ack` sync, stale detection, due-message wake, recurrence |
-| `src/session-manager.ts` | Resolves sessions; opens `inbound.db` / `outbound.db`; manages heartbeat path |
-| `src/container-runner.ts` | Spawns per-agent-group Docker containers with session DB + outbox mounts, OneCLI `ensureAgent` |
-| `src/container-runtime.ts` | Runtime selection (Docker vs Apple containers), orphan cleanup |
-| `src/modules/permissions/access.ts` | `canAccessAgentGroup` — owner / global admin / scoped admin / member resolution against `user_roles` + `agent_group_members` |
-| `src/modules/approvals/primitive.ts` | `pickApprover`, `pickApprovalDelivery`, `requestApproval`, approval-handler registry |
-| `src/command-gate.ts` | Router-side admin command gate — queries `user_roles` directly (no env var, no container-side check) |
-| `src/onecli-approvals.ts` | OneCLI credentialed-action approval bridge |
-| `src/user-dm.ts` | Cold-DM resolution + `user_dms` cache |
-| `src/group-init.ts` | Per-agent-group filesystem scaffold (CLAUDE.md, skills, agent-runner-src overlay) |
-| `src/db/` | DB layer — agent_groups, messaging_groups, sessions, user_roles, user_dms, pending_*, migrations |
-| `src/channels/` | Channel adapter infra (registry, Chat SDK bridge); specific channel adapters are skill-installed from the `channels` branch |
-| `src/providers/` | Host-side provider container-config (`claude` baked in; `opencode` etc. installed from the `providers` branch) |
-| `container/agent-runner/src/` | Agent-runner: poll loop, formatter, provider abstraction, MCP tools, destinations |
-| `container/skills/` | Container skills mounted into every agent session |
-| `groups/<folder>/` | Per-agent-group filesystem (CLAUDE.md, skills, per-group `agent-runner-src/` overlay) |
-| `scripts/init-first-agent.ts` | Bootstrap the first DM-wired agent (used by `/init-first-agent` skill) |
-
-## Channels and Providers (skill-installed)
-
-Trunk does not ship any specific channel adapter or non-default agent provider. The codebase is the registry/infra; the actual adapters and providers live on long-lived sibling branches and get copied in by skills:
-
-- **`channels` branch** — Discord, Slack, Telegram, WhatsApp, Teams, Linear, GitHub, iMessage, Webex, Resend, Matrix, Google Chat, WhatsApp Cloud (+ helpers, tests, channel-specific setup steps). Installed via `/add-<channel>` skills.
-- **`providers` branch** — OpenCode (and any future non-default agent providers). Installed via `/add-opencode`.
-
-Each `/add-<name>` skill is idempotent: `git fetch origin <branch>` → copy module(s) into the standard paths → append a self-registration import to the relevant barrel → `pnpm install <pkg>@<pinned-version>` → build.
-
-## Self-Modification
-
-One tier of agent self-modification today:
-
-1. **`install_packages` / `add_mcp_server`** — changes to the per-agent-group container config only (apt/npm deps, wire an existing MCP server). Single admin approval per request; on approve, the handler in `src/modules/self-mod/apply.ts` rebuilds the image when needed (`install_packages` only) and restarts the container. `container/agent-runner/src/mcp-tools/self-mod.ts`.
-
-A second tier (direct source-level self-edits via a draft/activate flow) is planned but not yet implemented.
-
-## Secrets / Credentials / OneCLI
-
-API keys, OAuth tokens, and auth credentials are managed by the OneCLI gateway. Secrets are injected into per-agent containers at request time — none are passed in env vars or through chat context. `src/onecli-approvals.ts`, `ensureAgent()` in `container-runner.ts`. Run `onecli --help`.
-
-### Gotcha: auto-created agents start in `selective` secret mode
-
-When the host first spawns a session for a new agent group, `container-runner.ts:385` calls `onecli.ensureAgent({ name, identifier })`. The OneCLI `POST /api/agents` endpoint creates the agent in **`selective`** secret mode — meaning **no secrets are assigned to it by default**, even if the secrets exist in the vault and have host patterns that would otherwise match.
-
-Symptom: container starts, the proxy + CA cert are wired correctly, but the agent gets `401 Unauthorized` (or similar) from APIs whose credentials *are* in the vault. The credential just isn't in this agent's allow-list.
-
-The SDK does not expose `setSecretMode` — the only fix is the CLI (or the web UI at `http://127.0.0.1:10254`).
+## Service Names
 
 ```bash
-# Find the agent (identifier is the agent group id)
+# Andy
+systemctl --user status   nanoclaw-v2-930d9414
+systemctl --user restart  nanoclaw-v2-930d9414
+
+# Milton
+systemctl --user status   nanoclaw-v2-952bb239
+systemctl --user restart  nanoclaw-v2-952bb239
+```
+
+Each install also has its own container image: `nanoclaw-agent-v2-930d9414:latest` (Andy) and `nanoclaw-agent-v2-952bb239:latest` (Milton).
+
+## Logs
+
+```bash
+tail -f ~/nanoclaw-andy/logs/nanoclaw.log
+tail -f ~/nanoclaw-andy/logs/nanoclaw.error.log
+tail -f ~/nanoclaw-milton/logs/nanoclaw.log
+tail -f ~/nanoclaw-milton/logs/nanoclaw.error.log
+```
+
+## Overlay Items (Re-Apply on Every Upstream Pull)
+
+Both installs apply the same set of patches on top of upstream. When pulling upstream into either install, re-apply these:
+
+1. **`container/agent-runner/src/providers/claude.ts`** — change `settingSources: ['project', 'user']` to `settingSources: ['project', 'user', 'local']`. Without this, `CLAUDE.local.md` (the per-bot persona) is invisible to the SDK.
+2. **`container/agent-runner/src/attachment-preprocessor.ts`** — copy from operator repo `operator/overlay/` (or from the other install).
+3. **`container/agent-runner/src/poll-loop.ts`** — add `import { preprocessAttachments } from './attachment-preprocessor.js';` and call `await preprocessAttachments(keep)` before `formatMessagesWithCommands(keep, ...)` in the initial-batch path, and `await preprocessAttachments(newMessages)` before `formatMessages(newMessages)` in the follow-up path. Make the `setInterval(() => {})` callback `async`.
+4. **`container/agent-runner/src/mcp-tools/recall.ts`** — copy from `operator/overlay/`. Add `import './recall.js';` to `container/agent-runner/src/mcp-tools/index.ts`.
+5. **`container/Dockerfile`** — add `openssh-client poppler-utils python3` to the apt deps. Add `RUN chmod 666 /etc/passwd`. Add `COPY skills/pdf-reader/pdf-reader /usr/local/bin/pdf-reader` + `COPY skills/brave-search/brave-search /usr/local/bin/brave-search` + `RUN chmod +x /usr/local/bin/pdf-reader /usr/local/bin/brave-search`. (Andy only — Milton just needs `poppler-utils` + pdf-reader.)
+6. **`container/skills/pdf-reader/`** + **`container/skills/brave-search/`** — copy binaries from `operator/overlay/`.
+7. **`container/entrypoint.sh`** — Andy only. Adds andy-ssh key copying + git identity. Copy from `operator/overlay/`.
+
+## Andy-Only Configuration
+
+- `groups/dm-with-kyle/container.json` — 5 MCP servers (google_calendar, google_drive, gmail, github, brave_search) and 6 mounts (home, andy-ssh, 3 google config dirs, piCloud).
+- `groups/dm-with-kyle/CLAUDE.local.md` — persona (~285 lines including Channel Hats).
+- `groups/dm-with-kyle/memory/` — 7 memory files (family, infrastructure, channels, etc.).
+- `groups/dm-with-kyle/scripts/doc-check.sh` — daily drift audit script.
+
+## Milton-Only Configuration
+
+- `groups/dm-with-alexa/CLAUDE.local.md` — paralegal persona (~100 lines).
+- `groups/dm-with-alexa/container.json` — empty (no MCPs, no mounts).
+
+## Backups
+
+The pre-migration tar lives at `/mnt/piCloud/nanoclaw-backups/nanoclaw-pre-migrate-2026-04-27T152439Z.tar.gz` (100MB). It contains the full legacy `~/nanoclaw/` state at the moment we began this rebuild — including the original `groups/`, `data/`, `.env`. Recovery is `tar -xzf` somewhere safe, then cherry-pick what's needed.
+
+The plan file that drove this rebuild is at `~/.claude/plans/this-repo-has-really-federated-kay.md`.
+
+## OneCLI
+
+OneCLI Agent Vault runs at `http://172.17.0.1:10254`. Both bots' agents are registered in `mode all` so any vault secret with a matching host pattern is available to them. Manage at the web UI or via:
+
+```bash
 onecli agents list
-
-# Flip to "all" so every vault secret with a matching host pattern gets injected
-onecli agents set-secret-mode --id <agent-id> --mode all
-
-# Or, stay selective and assign specific secrets
-onecli secrets list                                    # find secret ids
-onecli agents set-secrets --id <agent-id> --secret-ids <id1>,<id2>
-
-# Inspect what an agent currently has
-onecli agents secrets --id <agent-id>                  # secrets assigned to this agent
-onecli secrets list                                    # all vault secrets (with host patterns)
+onecli secrets list
 ```
 
-If you've just enabled `mode all`, no container restart is needed — the gateway looks up secrets per request, so the next API call from the running container will see the new credentials.
+## Operator Helpers
 
-### Requiring approval for credential use
+Scripts under `operator/` for routine tasks. Currently:
 
-Approval-gating credentialed actions is a **two-sided** flow:
+- `operator/bots-status.sh` — quick status check for both services + Discord connection.
 
-- **Server-side** (OneCLI gateway): decides *when* to hold a request and emit a pending approval. As of `onecli@1.3.0`, the CLI does **not** expose this — `rules create --action` only accepts `block` or `rate_limit`, and `secrets create` has no approval flag. Approval policies must be configured via the OneCLI web UI at `http://127.0.0.1:10254`. If/when the CLI grows an `approve` action, this section needs updating.
-- **Host-side** (nanoclaw): receives pending approvals and routes them to a human. `src/modules/approvals/onecli-approvals.ts` registers a callback via `onecli.configureManualApproval(cb)` (long-polls `GET /api/approvals/pending`). The callback uses `pickApprover` + `pickApprovalDelivery` from `src/modules/approvals/primitive.ts` to DM an approver. Approvers are resolved from the `user_roles` table — preference order: scoped admins for the agent group → global admins → owners. There is no env var like `NANOCLAW_ADMIN_USER_IDS`; roles are persisted in the central DB only.
+## Editing Personas
 
-If approvals are configured server-side but the host callback isn't running (or throws), every credentialed call hangs until the gateway times out. Conversely, if the gateway has no rule asking for approval, the host callback never fires regardless of how it's wired.
+Persona files live in each install's `groups/<folder>/CLAUDE.local.md`:
 
-## Skills
+- Andy: `~/nanoclaw-andy/groups/dm-with-kyle/CLAUDE.local.md`
+- Milton: `~/nanoclaw-milton/groups/dm-with-alexa/CLAUDE.local.md`
 
-Four types of skills. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full taxonomy.
-
-- **Channel/provider install skills** — copy the relevant module(s) in from the `channels` or `providers` branch, wire imports, install pinned deps (e.g. `/add-discord`, `/add-slack`, `/add-whatsapp`, `/add-opencode`).
-- **Utility skills** — ship code files alongside `SKILL.md` (e.g. `/claw`).
-- **Operational skills** — instruction-only workflows (`/setup`, `/debug`, `/customize`, `/init-first-agent`, `/manage-channels`, `/init-onecli`, `/update-nanoclaw`).
-- **Container skills** — loaded inside agent containers at runtime (`container/skills/`: `welcome`, `self-customize`, `agent-browser`, `slack-formatting`).
-
-| Skill | When to Use |
-|-------|-------------|
-| `/setup` | First-time install, auth, service config |
-| `/init-first-agent` | Bootstrap the first DM-wired agent (channel pick → identity → wire → welcome DM) |
-| `/manage-channels` | Wire channels to agent groups with isolation level decisions |
-| `/customize` | Adding channels, integrations, behavior changes |
-| `/debug` | Container issues, logs, troubleshooting |
-| `/update-nanoclaw` | Bring upstream updates into a customized install |
-| `/init-onecli` | Install OneCLI Agent Vault and migrate `.env` credentials |
-
-## Contributing
-
-Before creating a PR, adding a skill, or preparing any contribution, you MUST read [CONTRIBUTING.md](CONTRIBUTING.md). It covers accepted change types, the four skill types and their guidelines, `SKILL.md` format rules, and the pre-submission checklist.
-
-## Development
-
-Run commands directly — don't tell the user to run them.
+After editing a persona, you must wipe the SDK session caches so the next message picks up the change:
 
 ```bash
-# Host (Node + pnpm)
-pnpm run dev          # Host with hot reload
-pnpm run build        # Compile host TypeScript (src/)
-./container/build.sh  # Rebuild agent container image (nanoclaw-agent:latest)
-pnpm test             # Host tests (vitest)
-
-# Agent-runner (Bun — separate package tree under container/agent-runner/)
-cd container/agent-runner && bun install   # After editing agent-runner deps
-cd container/agent-runner && bun test      # Container tests (bun:test)
+INSTALL=~/nanoclaw-andy        # or ~/nanoclaw-milton
+AG=$(sqlite3 $INSTALL/data/v2.db "SELECT id FROM agent_groups LIMIT 1;")
+for db in $INSTALL/data/v2-sessions/*/sess-*/outbound.db; do
+  sqlite3 "$db" "DELETE FROM session_state;"
+done
+trash-put $INSTALL/data/v2-sessions/$AG/.claude-shared/projects 2>/dev/null
+trash-put $INSTALL/data/v2-sessions/$AG/.claude-shared/sessions 2>/dev/null
+mkdir -p $INSTALL/data/v2-sessions/$AG/.claude-shared/{projects,sessions}
 ```
 
-Container typecheck is a separate tsconfig — if you edit `container/agent-runner/src/`, run `pnpm exec tsc -p container/agent-runner/tsconfig.json --noEmit` from root (or `bun run typecheck` from `container/agent-runner/`).
+Without that wipe, the SDK resumes the prior conversation with the OLD system prompt frozen in.
 
-Service management:
-```bash
-# macOS (launchd)
-launchctl load   ~/Library/LaunchAgents/com.nanoclaw.plist
-launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
-launchctl kickstart -k gui/$(id -u)/com.nanoclaw  # restart
+## Updating Upstream
 
-# Linux (systemd)
-systemctl --user start|stop|restart nanoclaw
-```
+When `qwibitai/nanoclaw` ships meaningful changes:
 
-Host logs: `logs/nanoclaw.log` (normal) and `logs/nanoclaw.error.log` (errors only — some delivery/approval failures only show up here).
+1. Decide whether to pull (read upstream's CHANGELOG first).
+2. In the bot's install: `git pull upstream main` (resolve conflicts conservatively).
+3. Re-apply the overlay items listed above.
+4. Rebuild the container: `cd ~/nanoclaw-<bot> && ./container/build.sh`.
+5. Restart: `systemctl --user restart nanoclaw-v2-<slug>`.
+6. Test in the bot's primary channel.
 
-## Supply Chain Security (pnpm)
+Avoid pulling upstream casually — every pull is a small reapplication tax. Pull when there's a fix or feature you actually want.
 
-This project uses pnpm with `minimumReleaseAge: 4320` (3 days) in `pnpm-workspace.yaml`. New package versions must exist on the npm registry for 3 days before pnpm will resolve them.
+## Hard Rules
 
-**Rules — do not bypass without explicit human approval:**
-- **`minimumReleaseAgeExclude`**: Never add entries without human sign-off. If a package must bypass the release age gate, the human must approve and the entry must pin the exact version being excluded (e.g. `package@1.2.3`), never a range.
-- **`onlyBuiltDependencies`**: Never add packages to this list without human approval — build scripts execute arbitrary code during install.
-- **`pnpm install --frozen-lockfile`** should be used in CI, automation, and container builds. Never run bare `pnpm install` in those contexts.
-
-## Docs Index
-
-| Doc | Purpose |
-|-----|---------|
-| [docs/architecture.md](docs/architecture.md) | Full architecture writeup |
-| [docs/api-details.md](docs/api-details.md) | Host API + DB schema details |
-| [docs/db.md](docs/db.md) | DB architecture overview: three-DB model, cross-mount rules, readers/writers map |
-| [docs/db-central.md](docs/db-central.md) | Central DB (`data/v2.db`) — every table + migration system |
-| [docs/db-session.md](docs/db-session.md) | Per-session `inbound.db` + `outbound.db` schemas + seq parity |
-| [docs/agent-runner-details.md](docs/agent-runner-details.md) | Agent-runner internals + MCP tool interface |
-| [docs/isolation-model.md](docs/isolation-model.md) | Three-level channel isolation model |
-| [docs/setup-wiring.md](docs/setup-wiring.md) | What's wired, what's open in the setup flow |
-| [docs/architecture-diagram.md](docs/architecture-diagram.md) | Diagram version of the architecture |
-| [docs/build-and-runtime.md](docs/build-and-runtime.md) | Runtime split (Node host + Bun container), lockfiles, image build surface, CI, key invariants |
-
-## Container Build Cache
-
-The container buildkit caches the build context aggressively. `--no-cache` alone does NOT invalidate COPY steps — the builder's volume retains stale files. To force a truly clean rebuild, prune the builder then re-run `./container/build.sh`.
-
-## Container Runtime (Bun)
-
-The agent container runs on **Bun**; the host runs on **Node** (pnpm). They communicate only via session DBs — no shared modules. Details and rationale: [docs/build-and-runtime.md](docs/build-and-runtime.md).
-
-**Gotchas — trigger + action:**
-
-- **Adding or bumping a runtime dep in `container/agent-runner/`** → edit `package.json`, then `cd container/agent-runner && bun install` and commit the updated `bun.lock`. Do not run `pnpm install` there — agent-runner is not a pnpm workspace.
-- **Bumping `@anthropic-ai/claude-agent-sdk`, `@modelcontextprotocol/sdk`, or any agent-runner runtime dep** → no `minimumReleaseAge` policy applies to this tree. Check the release date on npm, pin deliberately, never `bun update` blindly.
-- **Writing a new named-param SQL insert/update in the container** → use `$name` in both SQL and JS keys: `.run({ $id: msg.id })`. `bun:sqlite` does not auto-strip the prefix the way `better-sqlite3` does on the host. Positional `?` params work normally.
-- **Adding a test in `container/agent-runner/src/`** → import from `bun:test`, not `vitest`. Vitest runs on Node and can't load `bun:sqlite`. `vitest.config.ts` excludes this tree.
-- **Adding a Node CLI the agent invokes at runtime** (like `agent-browser`, `claude-code`, `vercel`) → put it in the Dockerfile's pnpm global-install block, pinned to an exact version via a new `ARG`. Don't use `bun install -g` — that bypasses the pnpm supply-chain policy.
-- **Changing the Dockerfile entrypoint or the dynamic-spawn command** (`src/container-runner.ts` line ~301) → keep `exec bun ...` so signals forward cleanly. The image has no `/app/dist`; don't reintroduce a tsc build step.
-- **Changing session-DB pragmas** (`container/agent-runner/src/db/connection.ts`) → `journal_mode=DELETE` is load-bearing for cross-mount visibility. Read the comment block at the top of the file first.
-
-## CJK font support
-
-Agent containers ship without CJK fonts by default (~200MB saved). If you notice signals the user works with Chinese/Japanese/Korean content — conversing in CJK, CJK timezone (e.g., `Asia/Tokyo`, `Asia/Shanghai`, `Asia/Seoul`, `Asia/Taipei`, `Asia/Hong_Kong`), system locale hint, or mentions of needing to render CJK in screenshots/PDFs/scraped pages — offer to enable it:
-
-```bash
-# Ensure .env has INSTALL_CJK_FONTS=true (overwrite or append)
-grep -q '^INSTALL_CJK_FONTS=' .env && sed -i.bak 's/^INSTALL_CJK_FONTS=.*/INSTALL_CJK_FONTS=true/' .env && rm -f .env.bak || echo 'INSTALL_CJK_FONTS=true' >> .env
-
-# Rebuild and restart so new sessions pick up the new image
-./container/build.sh
-launchctl kickstart -k gui/$(id -u)/com.nanoclaw   # macOS
-# systemctl --user restart nanoclaw                # Linux
-```
-
-`container/build.sh` reads `INSTALL_CJK_FONTS` from `.env` and passes it through as a Docker build-arg. Without CJK fonts, Chromium-rendered screenshots and PDFs containing CJK text show tofu (empty rectangles) instead of characters.
+- **Don't run NanoClaw from this repo.** It's not an install.
+- **Don't `git push` to either install's remote** unless you have a deliberate reason. Both installs are intended as pure-upstream + private overlay; pushing your overlay back upstream would leak host-specific paths and credentials patterns.
+- **Don't delete the piCloud backup** without first confirming both bots have at least 30 days of healthy operation on the new installs.
