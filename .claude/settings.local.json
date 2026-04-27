@@ -93,7 +93,18 @@
       "Bash(trash-put data/v2-sessions/ag-1777308567112-e5zx1i)",
       "Bash(trash-put groups/cli-with-kyle)",
       "Bash(mv groups/dm-with-kyle groups/dm-with-alexa)",
-      "Bash(chmod +x /home/kyle/nanoclaw-milton/container/skills/pdf-reader/pdf-reader)"
+      "Bash(chmod +x /home/kyle/nanoclaw-milton/container/skills/pdf-reader/pdf-reader)",
+      "Bash(docker rmi *)",
+      "Bash(docker system *)",
+      "Bash(xargs -r docker rm -f)",
+      "Bash(docker builder *)",
+      "Bash(cp index.md /tmp/index.md.bak)",
+      "Bash(grep -vE \"discord-multi-bot-personas|discord-typing-indicator-lifecycle|discord-message-content-intent|discord-ipc-pipe-cold-warm-paths|discord-multi-bot-setup-layers|nanoclaw-v2-dual-persona-architecture|discord-reactions-implementation|discord-session-partition-architecture|nanoclaw-channels-vs-agent-groups|nanoclaw-model-provider-per-agent-group|multi-agent-swarm-ephemeral-creation|multi-model-agent-group-wiring|capability-documentation-patterns|canonical-source-mapping-pattern|heartbeat-ceiling-cold-start-respawn|per-channel-persona-guidance\" index.md)",
+      "Bash(mv index.md.new index.md)",
+      "Bash(tar -tzf /mnt/piCloud/nanoclaw-backups/nanoclaw-pre-migrate-2026-04-27T152439Z.tar.gz)",
+      "Bash(cp \"/home/kyle/.local/share/Trash/files/groups/discord_typescript-learning/memory/typescript-curriculum.md\" ~/nanoclaw-andy/groups/dm-with-kyle/memory/typescript-curriculum.md)",
+      "Bash(cp \"/home/kyle/.local/share/Trash/files/groups/discord_typescript-learning/memory/future-topics.md\" ~/nanoclaw-andy/groups/dm-with-kyle/memory/future-topics.md)",
+      "Bash(xargs -n1 basename)"
     ]
   }
 }
