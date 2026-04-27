@@ -12,6 +12,7 @@ import { initDb } from './db/connection.js';
 import { runMigrations } from './db/migrations/index.js';
 import { ensureContainerRuntimeRunning, cleanupOrphans } from './container-runtime.js';
 import { startActiveDeliveryPoll, startSweepDeliveryPoll, setDeliveryAdapter, stopDeliveryPolls } from './delivery.js';
+import { startJsonlGc, stopJsonlGc } from './host-jsonl-gc.js';
 import { startHostSweep, stopHostSweep } from './host-sweep.js';
 import { routeInbound } from './router.js';
 import { log } from './log.js';
@@ -158,6 +159,10 @@ async function main(): Promise<void> {
   startHostSweep();
   log.info('Host sweep started');
 
+  // 7. Start orphaned-jsonl GC (runs once now, then every 24h)
+  startJsonlGc();
+  log.info('JSONL GC started');
+
   log.info('NanoClaw running');
 }
 
@@ -173,6 +178,7 @@ async function shutdown(signal: string): Promise<void> {
   }
   stopDeliveryPolls();
   stopHostSweep();
+  stopJsonlGc();
   await teardownChannelAdapters();
   process.exit(0);
 }
