@@ -77,13 +77,15 @@ export function decideStuckAction(args: {
   const declaredBashMs = bashTimeoutMs(containerState);
 
   // Ceiling check only applies when we have an actual heartbeat timestamp.
-  // A freshly-spawned container hasn't had any SDK activity yet so no
-  // heartbeat file exists — if we treated that as infinitely stale we'd
-  // kill every container within seconds of spawn. Genuinely-dead containers
-  // that never wrote a heartbeat are caught by the separate "container
-  // process not running" cleanup path, not here. If a fresh container is
-  // hanging at the gate (claimed a message but never did anything) the
-  // claim-stuck check below handles it.
+  // The container-runner unlinks the heartbeat file on exit (see
+  // `clearHeartbeat` in session-manager), so a freshly-spawned container
+  // sees `heartbeatMtimeMs === 0` and gets a grace window until its first
+  // SDK event touches the file. Without that unlink, a respawn would
+  // inherit the previous run's stale mtime and get killed within seconds.
+  // Genuinely-dead containers that never wrote a heartbeat are caught by
+  // the separate "container process not running" cleanup path, not here.
+  // If a fresh container is hanging at the gate (claimed a message but
+  // never did anything) the claim-stuck check below handles it.
   if (heartbeatMtimeMs !== 0) {
     const heartbeatAge = now - heartbeatMtimeMs;
     const ceiling = Math.max(ABSOLUTE_CEILING_MS, declaredBashMs ?? 0);

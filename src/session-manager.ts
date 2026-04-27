@@ -396,3 +396,24 @@ export function markContainerIdle(sessionId: string): void {
 export function markContainerStopped(sessionId: string): void {
   updateSession(sessionId, { container_status: 'stopped' });
 }
+
+/**
+ * Remove the on-disk heartbeat file for a session.
+ *
+ * The host sweep treats `mtime > ABSOLUTE_CEILING_MS` as a stuck container.
+ * When a container exits, its heartbeat file mtime freezes at the last touch,
+ * which can be many hours old. The next container spawned for that session
+ * inherits that stale mtime and gets killed on the very next sweep — long
+ * before its first SDK event has a chance to refresh the timestamp. Removing
+ * the file lets the sweep's "no heartbeat = freshly spawned, give it time"
+ * branch (host-sweep.ts decideStuckAction) do its job.
+ */
+export function clearHeartbeat(agentGroupId: string, sessionId: string): void {
+  try {
+    fs.unlinkSync(heartbeatPath(agentGroupId, sessionId));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      log.warn('Failed to clear heartbeat file', { agentGroupId, sessionId, err });
+    }
+  }
+}

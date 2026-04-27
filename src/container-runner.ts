@@ -27,7 +27,13 @@ import {
   type ProviderContainerContribution,
   type VolumeMount,
 } from './providers/provider-container-registry.js';
-import { markContainerRunning, markContainerStopped, sessionDir, writeSessionRouting } from './session-manager.js';
+import {
+  clearHeartbeat,
+  markContainerRunning,
+  markContainerStopped,
+  sessionDir,
+  writeSessionRouting,
+} from './session-manager.js';
 import type { AgentGroup, Session } from './types.js';
 
 const onecli = new OneCLI({ url: ONECLI_URL, apiKey: ONECLI_API_KEY });
@@ -146,6 +152,7 @@ async function spawnContainer(session: Session): Promise<void> {
     activeContainers.delete(session.id);
     markContainerStopped(session.id);
     stopTypingRefresh(session.id);
+    clearHeartbeat(agentGroup.id, session.id);
     log.info('Container exited', { sessionId: session.id, code, containerName });
   });
 
@@ -153,6 +160,7 @@ async function spawnContainer(session: Session): Promise<void> {
     activeContainers.delete(session.id);
     markContainerStopped(session.id);
     stopTypingRefresh(session.id);
+    clearHeartbeat(agentGroup.id, session.id);
     log.error('Container spawn error', { sessionId: session.id, err });
   });
 }
