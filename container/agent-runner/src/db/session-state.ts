@@ -32,6 +32,15 @@ export function getStoredSessionId(): string | undefined {
   return getValue(SDK_SESSION_KEY);
 }
 
+export function getStoredSessionUpdatedAt(): Date | undefined {
+  const row = getOutboundDb()
+    .prepare('SELECT updated_at FROM session_state WHERE key = ?')
+    .get(SDK_SESSION_KEY) as { updated_at: string } | undefined;
+  if (!row?.updated_at) return undefined;
+  const d = new Date(row.updated_at);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
 export function setStoredSessionId(sessionId: string): void {
   setValue(SDK_SESSION_KEY, sessionId);
 }

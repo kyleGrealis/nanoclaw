@@ -1,14 +1,50 @@
+import fs from 'fs';
+import path from 'path';
+
 import { findByName, getAllDestinations, type DestinationEntry } from './destinations.js';
 import { getPendingMessages, markProcessing, markCompleted, type MessageInRow } from './db/messages-in.js';
 import { writeMessageOut } from './db/messages-out.js';
 import { touchHeartbeat, clearStaleProcessingAcks } from './db/connection.js';
-import { getStoredSessionId, setStoredSessionId, clearStoredSessionId } from './db/session-state.js';
+import { getStoredSessionId, getStoredSessionUpdatedAt, setStoredSessionId, clearStoredSessionId } from './db/session-state.js';
 import { formatMessages, extractRouting, categorizeMessage, isClearCommand, stripInternalTags, type RoutingContext } from './formatter.js';
 import { preprocessAttachments } from './attachment-preprocessor.js';
 import type { AgentProvider, AgentQuery, ProviderEvent } from './providers/types.js';
 
 const POLL_INTERVAL_MS = 1000;
 const ACTIVE_POLL_INTERVAL_MS = 500;
+
+// Cold-start session rotation: clear the stored SDK session ID if the
+// transcript jsonl has grown past the size threshold or the session has been
+// idle past the time threshold. The Claude Agent SDK loads the entire jsonl
+// on resume and sends a compacted prefix on every API call; an unbounded
+// transcript dominates per-message latency. With recall + memory in place,
+// dropping the conversational tail is a safe trade.
+const SDK_TRANSCRIPTS_DIR = '/home/node/.claude/projects/-workspace-agent';
+const SESSION_ROTATE_IDLE_MS = 48 * 60 * 60 * 1000;
+const SESSION_ROTATE_SIZE_BYTES = 10 * 1024 * 1024;
+
+function shouldRotateStoredSession(continuation: string): { rotate: boolean; reason?: string } {
+  try {
+    const transcriptPath = path.join(SDK_TRANSCRIPTS_DIR, `${continuation}.jsonl`);
+    const stat = fs.statSync(transcriptPath);
+    if (stat.size > SESSION_ROTATE_SIZE_BYTES) {
+      return { rotate: true, reason: `jsonl ${(stat.size / 1024 / 1024).toFixed(1)}MB > 10MB` };
+    }
+  } catch {
+    // jsonl missing/unreadable — let existing stale-session recovery handle it on first query
+  }
+
+  const updated = getStoredSessionUpdatedAt();
+  if (updated) {
+    const idleMs = Date.now() - updated.getTime();
+    if (idleMs > SESSION_ROTATE_IDLE_MS) {
+      const idleHours = (idleMs / 1000 / 60 / 60).toFixed(1);
+      return { rotate: true, reason: `idle ${idleHours}h > 48h` };
+    }
+  }
+
+  return { rotate: false };
+}
 
 function log(msg: string): void {
   console.error(`[poll-loop] ${msg}`);
@@ -44,7 +80,14 @@ export async function runPollLoop(config: PollLoopConfig): Promise<void> {
   let continuation: string | undefined = getStoredSessionId();
 
   if (continuation) {
-    log(`Resuming agent session ${continuation}`);
+    const { rotate, reason } = shouldRotateStoredSession(continuation);
+    if (rotate) {
+      log(`Rotating stored session ${continuation} (${reason}); starting fresh`);
+      clearStoredSessionId();
+      continuation = undefined;
+    } else {
+      log(`Resuming agent session ${continuation}`);
+    }
   }
 
   // Clear leftover 'processing' acks from a previous crashed container.
