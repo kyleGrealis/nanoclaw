@@ -44,13 +44,17 @@ tail -f ~/nanoclaw-milton/logs/nanoclaw.error.log
 
 Both installs apply the same set of patches on top of upstream. When pulling upstream into either install, re-apply these:
 
-1. **`container/agent-runner/src/providers/claude.ts`** — change `settingSources: ['project', 'user']` to `settingSources: ['project', 'user', 'local']`. Without this, `CLAUDE.local.md` (the per-bot persona) is invisible to the SDK.
-2. **`container/agent-runner/src/attachment-preprocessor.ts`** — copy from operator repo `operator/overlay/` (or from the other install).
-3. **`container/agent-runner/src/poll-loop.ts`** — add `import { preprocessAttachments } from './attachment-preprocessor.js';` and call `await preprocessAttachments(keep)` before `formatMessagesWithCommands(keep, ...)` in the initial-batch path, and `await preprocessAttachments(newMessages)` before `formatMessages(newMessages)` in the follow-up path. Make the `setInterval(() => {})` callback `async`.
-4. **`container/agent-runner/src/mcp-tools/recall.ts`** — copy from `operator/overlay/`. Add `import './recall.js';` to `container/agent-runner/src/mcp-tools/index.ts`.
-5. **`container/Dockerfile`** — add `openssh-client poppler-utils python3` to the apt deps. Add `RUN chmod 666 /etc/passwd`. Add `COPY skills/pdf-reader/pdf-reader /usr/local/bin/pdf-reader` + `COPY skills/brave-search/brave-search /usr/local/bin/brave-search` + `RUN chmod +x /usr/local/bin/pdf-reader /usr/local/bin/brave-search`. (Andy only — Milton just needs `poppler-utils` + pdf-reader.)
-6. **`container/skills/pdf-reader/`** + **`container/skills/brave-search/`** — copy binaries from `operator/overlay/`.
-7. **`container/entrypoint.sh`** — Andy only. Adds andy-ssh key copying + git identity. Copy from `operator/overlay/`.
+1. **`container/agent-runner/src/providers/claude.ts`** — two edits, canonical copy at `operator/overlay/agent-runner-src/providers/claude.ts`:
+   - Change `settingSources: ['project', 'user']` to `settingSources: ['project', 'user', 'local']`. Without this, `CLAUDE.local.md` (the per-bot persona) is invisible to the SDK.
+   - The `compact_boundary` system event must yield `progress` (logs only), **not** `result` (which posts to Discord). Without this fix, every SDK auto-compaction posts a "Context compacted (NNN tokens compacted)" message into the user's channel.
+2. **`container/agent-runner/src/formatter.ts`** — copy from `operator/overlay/agent-runner-src/formatter.ts`. Adds a `<routing reply_to_channel="..." />` tag to the prompt header so post-compact summaries can't strip channel context. Without this, after auto-compaction the agent loses track of which channel the conversation originated in and defaults to whichever destination its persona names most prominently (e.g. `#main`).
+3. **`container/agent-runner/src/attachment-preprocessor.ts`** — copy from operator repo `operator/overlay/` (or from the other install).
+4. **`container/agent-runner/src/poll-loop.ts`** — add `import { preprocessAttachments } from './attachment-preprocessor.js';` and call `await preprocessAttachments(keep)` before `formatMessagesWithCommands(keep, ...)` in the initial-batch path, and `await preprocessAttachments(newMessages)` before `formatMessages(newMessages)` in the follow-up path. Make the `setInterval(() => {})` callback `async`.
+5. **`container/agent-runner/src/mcp-tools/recall.ts`** — copy from `operator/overlay/`. Add `import './recall.js';` to `container/agent-runner/src/mcp-tools/index.ts`.
+6. **`container/Dockerfile`** — add `openssh-client poppler-utils python3` to the apt deps. Add `RUN chmod 666 /etc/passwd`. Add `COPY skills/pdf-reader/pdf-reader /usr/local/bin/pdf-reader` + `COPY skills/brave-search/brave-search /usr/local/bin/brave-search` + `RUN chmod +x /usr/local/bin/pdf-reader /usr/local/bin/brave-search`. (Andy only — Milton just needs `poppler-utils` + pdf-reader.)
+7. **`container/skills/pdf-reader/`** + **`container/skills/brave-search/`** — copy binaries from `operator/overlay/`.
+8. **`container/entrypoint.sh`** — Andy only. Adds andy-ssh key copying + git identity. Copy from `operator/overlay/`.
+9. **`src/channels/chat-sdk-bridge.ts`** — copy from `operator/overlay/host-src/channels/chat-sdk-bridge.ts`. Adds `url: att.url` to the inbound attachment entry. Without this, Discord image/PDF attachments arrive in messages_in with neither `data` nor `url` (because `@chat-adapter/discord` doesn't implement `fetchData()` on attachments), so the container preprocessor has nothing to save and the agent renders `[image: name.png]` with no path. With the URL passed through, the container's existing URL-fetch fallback in `attachment-preprocessor.ts` handles the download. After applying, run `pnpm build` on the host (no container rebuild needed).
 
 ## Andy-Only Configuration
 
