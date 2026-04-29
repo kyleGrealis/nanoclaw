@@ -70,7 +70,7 @@ Both installs apply the same set of patches on top of upstream. When pulling ups
 
 ## Backups
 
-The pre-migration tar lives at `/mnt/piCloud/nanoclaw-backups/nanoclaw-pre-migrate-2026-04-27T152439Z.tar.gz` (100MB). It contains the full legacy `~/nanoclaw/` state at the moment we began this rebuild — including the original `groups/`, `data/`, `.env`. Recovery is `tar -xzf` somewhere safe, then cherry-pick what's needed.
+~~The pre-migration tar lives at `/mnt/piCloud/nanoclaw-backups/nanoclaw-pre-migrate-2026-04-27T152439Z.tar.gz` (100MB). It contains the full legacy `~/nanoclaw/` state at the moment we began this rebuild — including the original `groups/`, `data/`, `.env`. Recovery is `tar -xzf` somewhere safe, then cherry-pick what's needed.~~ _(Yeeted 2026-04-28 — Kyle ditched the pre-migrate snapshot early. Local `~/nanoclaw-snapshots/` and the piCloud copies are gone. No recovery path from this point.)_
 
 The plan file that drove this rebuild is at `~/.claude/plans/this-repo-has-really-federated-kay.md`.
 
@@ -128,4 +128,4 @@ Avoid pulling upstream casually — every pull is a small reapplication tax. Pul
 
 - **Don't run NanoClaw from this repo.** It's not an install.
 - **Don't `git push` to either install's remote** unless you have a deliberate reason. Both installs are intended as pure-upstream + private overlay; pushing your overlay back upstream would leak host-specific paths and credentials patterns.
-- **Don't delete the piCloud backup** without first confirming both bots have at least 30 days of healthy operation on the new installs.
+- ~~**Don't delete the piCloud backup** without first confirming both bots have at least 30 days of healthy operation on the new installs.~~ _(Rule yeeted 2026-04-28 with the backup itself.)_
