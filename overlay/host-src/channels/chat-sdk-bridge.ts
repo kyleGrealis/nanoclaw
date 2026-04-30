@@ -355,15 +355,24 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
       const tid = threadId ?? platformId;
       const content = message.content as Record<string, unknown>;
 
+      // router.ts:messageIdForAgent appends `:ag-<groupId>` to inbound message
+      // ids for cross-session uniqueness. That suffix is internal — strip it
+      // before round-tripping the id back to the platform (Discord 400s on it).
+      const stripAgentSuffix = (id: string): string => id.replace(/:ag-[A-Za-z0-9-]+$/, '');
+
       if (content.operation === 'edit' && content.messageId) {
-        await adapter.editMessage(tid, content.messageId as string, {
+        await adapter.editMessage(tid, stripAgentSuffix(content.messageId as string), {
           markdown: transformText((content.text as string) || (content.markdown as string) || ''),
         });
         return;
       }
 
       if (content.operation === 'reaction' && content.messageId && content.emoji) {
-        await adapter.addReaction(tid, content.messageId as string, content.emoji as string);
+        await adapter.addReaction(
+          tid,
+          stripAgentSuffix(content.messageId as string),
+          content.emoji as string,
+        );
         return;
       }
 
