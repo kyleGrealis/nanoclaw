@@ -1,5 +1,5 @@
 /**
- * Recall MCP tool — search structured memory at /workspace/group/memory/*.md.
+ * Recall MCP tool — search structured memory at /workspace/agent/memory/*.md.
  *
  * The agent calls this whenever it needs a fact instead of pre-loading the whole
  * memory tree at session start. Each file declares `kind` (config | procedural |
@@ -17,7 +17,7 @@ import path from 'path';
 import { registerTools } from './server.js';
 import type { McpToolDefinition } from './types.js';
 
-const MEMORY_DIR = '/workspace/group/memory';
+const MEMORY_DIR = '/workspace/agent/memory';
 const DEFAULT_LIMIT = 5;
 const MAX_LIMIT = 20;
 const STALE_DAYS = 30;
