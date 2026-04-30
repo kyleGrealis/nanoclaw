@@ -104,7 +104,20 @@
       "Bash(tar -tzf /mnt/piCloud/nanoclaw-backups/nanoclaw-pre-migrate-2026-04-27T152439Z.tar.gz)",
       "Bash(cp \"/home/kyle/.local/share/Trash/files/groups/discord_typescript-learning/memory/typescript-curriculum.md\" ~/nanoclaw-andy/groups/dm-with-kyle/memory/typescript-curriculum.md)",
       "Bash(cp \"/home/kyle/.local/share/Trash/files/groups/discord_typescript-learning/memory/future-topics.md\" ~/nanoclaw-andy/groups/dm-with-kyle/memory/future-topics.md)",
-      "Bash(xargs -n1 basename)"
+      "Bash(xargs -n1 basename)",
+      "Bash(systemctl is-active *)",
+      "Bash(crontab -l)",
+      "Bash(mkdir -p /tmp/andy-migration-snapshot-2026-04-29)",
+      "Bash(cp ~/nanoclaw-andy/data/v2.db /tmp/andy-migration-snapshot-2026-04-29/v2.db.bak)",
+      "Bash(cp ~/nanoclaw-andy/data/v2-sessions/ag-1777305993631-dasks9/sess-1777312606668-6r4g45/inbound.db /tmp/andy-migration-snapshot-2026-04-29/main-inbound.db.bak)",
+      "Bash(cp /home/kyle/nanoclaw/.claude/skills/add-gemini-provider/resources/gemini.ts ~/nanoclaw-andy/container/agent-runner/src/providers/gemini.ts)",
+      "Bash(echo \"\")",
+      "Bash(echo \"import './gemini.js';\")",
+      "Bash(xargs -I {} docker logs {})",
+      "Bash(docker kill *)",
+      "Bash(curl -s *)",
+      "Bash(curl -sL *)",
+      "Bash(curl -fsSL *)"
     ]
   }
 }

@@ -55,13 +55,27 @@ Both installs apply the same set of patches on top of upstream. When pulling ups
 7. **`container/skills/pdf-reader/`** + **`container/skills/brave-search/`** — copy binaries from `operator/overlay/`.
 8. **`container/entrypoint.sh`** — Andy only. Adds andy-ssh key copying + git identity. Copy from `operator/overlay/`.
 9. **`src/channels/chat-sdk-bridge.ts`** — copy from `operator/overlay/host-src/channels/chat-sdk-bridge.ts`. Adds `url: att.url` to the inbound attachment entry. Without this, Discord image/PDF attachments arrive in messages_in with neither `data` nor `url` (because `@chat-adapter/discord` doesn't implement `fetchData()` on attachments), so the container preprocessor has nothing to save and the agent renders `[image: name.png]` with no path. With the URL passed through, the container's existing URL-fetch fallback in `attachment-preprocessor.ts` handles the download. After applying, run `pnpm build` on the host (no container rebuild needed).
+10. **`container/agent-runner/src/providers/gemini.ts`** — Andy only (Milton stays on Claude). Copy from `overlay/agent-runner-src/providers/gemini.ts`. Custom Gemini provider that translates the Anthropic-style event stream into Gemini's `Content[]` format, runs the function-calling loop against the same MCP servers Claude would use, inlines image attachments as `inlineData` Parts for vision, sanitizes JSON Schema for Gemini's stricter parameters validator, and routes tool calls via a flat-name fallback (Gemini sometimes drops the `server__` prefix when emitting function names — `brave_search__brave_web_search` arrives as `brave_web_search`). Also calls `setContainerToolInFlight` / `clearContainerToolInFlight` so host-sweep doesn't kill long Gemini tool calls. Append `import './gemini.js';` to `container/agent-runner/src/providers/index.ts`.
+11. **Host-side `model` plumbing** — Andy only. Five small additions thread the `model` field from `container.json` through to the provider:
+    - `container/agent-runner/src/providers/types.ts` — add `model?: string` to `QueryInput`.
+    - `container/agent-runner/src/config.ts` — add `model?: string` to `RunnerConfig`, load from raw config.
+    - `container/agent-runner/src/poll-loop.ts` — add `model?: string` to `PollLoopConfig`, pass `model: config.model` in the `provider.query()` call.
+    - `container/agent-runner/src/index.ts` — pass `model: config.model` into `runPollLoop({...})`.
+    - This is what lets each agent group declare `"model": "gemini-2.5-flash"` (or `gemini-2.5-pro`, etc.) in its own `container.json` instead of hardcoding in `gemini.ts`.
 
 ## Andy-Only Configuration
 
-- `groups/dm-with-kyle/container.json` — 5 MCP servers (google_calendar, google_drive, gmail, github, brave_search) and 6 mounts (home, andy-ssh, 3 google config dirs, piCloud).
-- `groups/dm-with-kyle/CLAUDE.local.md` — persona (~285 lines including Channel Hats).
+- `groups/dm-with-kyle/container.json` — `provider: "gemini"`, `model: "gemini-2.5-flash"` (set 2026-04-30). 5 MCP servers (google_calendar, google_drive, gmail, github, brave_search) and 6 mounts (home, andy-ssh, 3 google config dirs, piCloud).
+- `groups/dm-with-kyle/CLAUDE.local.md` — persona (~297 lines including Channel Hats). Currently the Claude-tuned version is live; a Gemini-tuned draft sits alongside it as `CLAUDE.local.md.gemini-draft.md` pending Kyle's review. Swap by `mv` and wiping `session_state` in every `outbound.db` under `data/v2-sessions/ag-1777305993631-dasks9/sess-*/`.
 - `groups/dm-with-kyle/memory/` — 7 memory files (family, infrastructure, channels, etc.).
 - `groups/dm-with-kyle/scripts/doc-check.sh` — daily drift audit script.
+
+### Gemini provider notes
+
+- Andy switched from Claude → Gemini on 2026-04-30. Milton stays on Claude (legal-paralegal work, fewer reasons to disrupt).
+- `GEMINI_API_KEY` must be in OneCLI vault (or as a fallback in `~/nanoclaw-andy/.env`).
+- The Claude provider files (`agent-runner/src/providers/claude.ts`, `@anthropic-ai/claude-agent-sdk` dep) are intentionally retained as a one-field rollback path — flip `provider: "claude"` in `container.json` and wipe `session_state` to revert. Plan to prune both ~1 week into Gemini-Andy stability.
+- Per-channel model selection isn't possible while all 7 channels share the `dm-with-kyle` agent group. If you ever want Pro for `#typescript-learning` and Flash for `#weather`, you'd need to split agent groups (and migrate the relevant scheduled tasks at the same time).
 
 ## Milton-Only Configuration
 
