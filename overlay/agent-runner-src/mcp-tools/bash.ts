@@ -20,6 +20,16 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_TIMEOUT_MS = 300_000;
 const MAX_OUTPUT_BYTES = 64 * 1024;
 
+// Host OPSEC Policy: Block destructive commands and exfiltration patterns
+const DANGEROUS_COMMANDS_RE = /\b(rm\s+-[rR]f?|chmod\s+-R|chown\s+-R|mkfs|dd\s+if=|git\s+reset\s+--hard|git\s+push\s+.*--force)\b/i;
+
+function isCommandSafe(command: string): { safe: boolean; reason?: string } {
+  if (DANGEROUS_COMMANDS_RE.test(command)) {
+    return { safe: false, reason: 'Destructive command detected (e.g., rm -rf, chmod -R, git reset --hard, or force-push).' };
+  }
+  return { safe: true };
+}
+
 function log(msg: string): void {
   console.error(`[mcp-tools] ${msg}`);
 }
@@ -128,7 +138,7 @@ export const bash: McpToolDefinition = {
   tool: {
     name: 'bash',
     description:
-      "Execute a shell command inside your container sandbox and return the combined stdout/stderr with exit code. Use for filesystem inspection (ls, find, cat, grep), running scripts, curl checks, git operations on mounted repos, and other one-shot shell work. The container is your sandbox — host paths are reachable only through configured mounts (typically /workspace/agent, /workspace/home, etc.). Output is capped at 64KB; for larger results, redirect to a file under /workspace/agent and use send_file. Default timeout 30s, max 300s. Honor any persona-level command bans (no destructive git operations, no rm — use trash-put).",
+      "Execute a shell command inside your container sandbox and return the combined stdout/stderr with exit code. Use for filesystem inspection (ls, find, cat, grep), running scripts, curl checks, git operations on mounted repos, and other one-shot shell work. The container is your sandbox — host paths are reachable only through configured mounts (typically /workspace/agent, /workspace/home, etc.). Output is capped at 64KB; for larger results, redirect to a file under /workspace/agent and use send_file. Default timeout 30s, max 300s. **Note: A Host OPSEC policy is enforced; destructive commands (rm -rf, chmod -R, git reset --hard, force-push, etc.) are blocked. Use safer alternatives like trash-put.**",
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -151,6 +161,12 @@ export const bash: McpToolDefinition = {
   async handler(args) {
     const command = String(args.command || '').trim();
     if (!command) return err('command is required');
+
+    const safety = isCommandSafe(command);
+    if (!safety.safe) {
+      return err(`Execution blocked by Host OPSEC policy: ${safety.reason} Please use safer alternatives (e.g., trash-put instead of rm, or soft git resets).`);
+    }
+
     const cwd = typeof args.cwd === 'string' && args.cwd ? args.cwd : DEFAULT_CWD;
     const requestedTimeout =
       typeof args.timeout_ms === 'number' && args.timeout_ms > 0 ? args.timeout_ms : DEFAULT_TIMEOUT_MS;
