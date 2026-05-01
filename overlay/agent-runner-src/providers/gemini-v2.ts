@@ -272,6 +272,11 @@ export class GeminiV2Provider implements AgentProvider {
       config: {
         systemInstruction: composedSystemInstruction,
         tools,
+        // Required when combining built-in tools (googleSearch) with
+        // functionDeclarations on Gemini 3+. Without this the API rejects
+        // with HTTP 400: "Please enable tool_config.include_server_side_tool_invocations
+        // to use Built-in tools with Function calling."
+        toolConfig: { includeServerSideToolInvocations: true },
       },
     });
 
