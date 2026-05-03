@@ -1,0 +1,13 @@
+{
+  "mcpServers": {},
+  "packages": {
+    "apt": [],
+    "npm": []
+  },
+  "additionalMounts": [],
+  "skills": [],
+  "provider": "gemini",
+  "model": "gemini-3-flash-preview",
+  "groupName": "dispatch-plain",
+  "assistantName": "Worker"
+}

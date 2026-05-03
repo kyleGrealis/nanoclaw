@@ -1,0 +1,24 @@
+{
+  "mcpServers": {},
+  "packages": {
+    "apt": [],
+    "npm": []
+  },
+  "additionalMounts": [
+    {
+      "hostPath": "/home/kyle",
+      "containerPath": "home",
+      "readonly": true
+    },
+    {
+      "hostPath": "/mnt/piCloud",
+      "containerPath": "piCloud",
+      "readonly": false
+    }
+  ],
+  "skills": [],
+  "provider": "gemini",
+  "model": "gemini-3-flash-preview",
+  "groupName": "dispatch-data",
+  "assistantName": "Worker"
+}

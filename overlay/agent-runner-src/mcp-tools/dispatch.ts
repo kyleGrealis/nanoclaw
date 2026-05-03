@@ -1,32 +1,24 @@
 /**
- * `dispatch_task` MCP tool — orchestrator → ephemeral worker dispatch.
+ * `dispatch_task` — orchestrator → ephemeral worker dispatch.
  *
- * STATUS: scaffolded only. The tool signature is final. The host-side
- * dispatcher that actually spawns an ephemeral worker container is
- * not yet wired. For now this returns a structured "dispatch_pending"
- * acknowledgement; the agent should treat that as "I tried, queued, no
- * result yet" rather than as a result.
+ * Spawns a fresh worker container with a scope-specific persona + toolset
+ * and a single inbound message containing the brief. The worker emits zero
+ * or more `task_progress` updates and exactly one `complete_task` summary,
+ * which the host forwards back into this session's inbound as
+ * `<dispatch_progress>` / `<dispatch_result>` tagged messages.
  *
- * Design intent (the day we light this up):
+ * Returns a `task_id` synchronously. The summary arrives later as a
+ * separate inbound — DO NOT block waiting for it.
  *
- *   1. Agent (orchestrator) calls dispatch_task({ brief, scope, expected }).
- *   2. The tool writes a `kind=system, action=dispatch_task` outbound
- *      message into outbound.db. Returns a `task_id` immediately.
- *   3. Host delivery action handler (src/modules/dispatch/) sees the row,
- *      spawns a fresh agent-runner container with:
- *        - a scoped CLAUDE.md (just the brief; no channel persona)
- *        - a restricted MCP toolset (per `scope`: e.g. just bash+recall
- *          for "research", or bash+github+update_memory for "devops")
- *        - read-only mount of memory/, fresh inbound/outbound dbs
- *        - a 30-min absolute ceiling
- *   4. Worker runs the brief, writes its final summary to outbound.db
- *      with `kind=task_result, refs=task_id`.
- *   5. Host moves the task_result into the parent session's inbound.db.
- *   6. Orchestrator sees it on the next turn and resumes.
- *
- * This shape gives us clean isolation (worker only sees what `scope`
- * grants) while still letting the orchestrator stay responsive in the
- * channel — slow workers don't block #main chat.
+ * Scopes (each grants a different model + toolset; see dispatch-scopes/<scope>/):
+ *   - research — Gemini 3 Pro + googleSearch grounding + bash. For deep
+ *     synthesis across many sources.
+ *   - devops   — Gemini 3 Flash + bash + ssh. For infra commands across
+ *     pi5/pi4/archMitters.
+ *   - data     — Gemini 3 Flash + bash + filesystem. For chewing through
+ *     files, sqlite DBs, logs.
+ *   - plain    — Gemini 3 Flash + bash only. Catch-all for general work
+ *     that doesn't need scoped tooling.
  */
 import { registerTools } from './server.js';
 import type { McpToolDefinition } from './types.js';
@@ -52,7 +44,7 @@ export const dispatchTask: McpToolDefinition = {
   tool: {
     name: 'dispatch_task',
     description:
-      "Spin up an ephemeral worker sub-agent to handle a long-running or specialized task without blocking your primary channel. The worker runs in an isolated container with a restricted toolset (per `scope`) and reports back a structured summary on a later turn — you do NOT block waiting for it. Use for: chewing through a large log file, executing a multi-step DevOps procedure, doing a deep web research dive, anything that would otherwise eat your turn budget. Don't use for quick lookups (use the appropriate MCP directly) or for chatting with the user (just answer). Returns a `task_id` immediately; the worker's final summary arrives as a separate inbound message tagged with that id. NOTE: dispatch infrastructure is currently scaffolded but not yet wired to a real worker spawn — calls today are recorded but produce no actual sub-agent. Use only when explicitly testing dispatch.",
+      "Spin up an ephemeral worker sub-agent to handle a long-running or specialized task without blocking your primary channel. The worker runs in an isolated container with a scope-specific toolset and model (research → Gemini 3 Pro + Google Search; devops/data/plain → Gemini 3 Flash). It reports back a `<dispatch_result>` summary as a later inbound message — you do NOT block waiting for it. May also send `<dispatch_progress>` updates mid-flight; relay or paraphrase those to the user as you see fit. Use for: chewing through a large log file, executing a multi-step DevOps procedure, doing a deep research dive across many sources, anything that would otherwise eat your turn budget. Don't use for quick lookups (use the appropriate MCP directly) or for chatting with the user. Acknowledge the dispatch to the user in plain natural language ('I'll dig into that and report back'); **do not mention the returned task_id** — it's an internal correlator. Default timeout 5min, max 30min.",
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -72,6 +64,11 @@ export const dispatchTask: McpToolDefinition = {
           description:
             'What shape of result you want back (1-2 sentences). E.g. "a list of broken systemd units with their last error", "a markdown summary of the PR diff with risk callouts".',
         },
+        timeoutMs: {
+          type: 'number',
+          description:
+            'Max worker runtime in ms before forced termination. Default 300000 (5min), max 1800000 (30min). Worker emits a `<dispatch_result status="timeout">` if it hits this.',
+        },
       },
       required: ['brief'],
     },
@@ -81,14 +78,10 @@ export const dispatchTask: McpToolDefinition = {
     if (!brief) return err('`brief` is required.');
     const scope = (typeof args.scope === 'string' ? args.scope : 'plain') as string;
     const expected = typeof args.expected === 'string' ? args.expected.trim() : '';
+    const timeoutMs = typeof args.timeoutMs === 'number' && args.timeoutMs > 0 ? args.timeoutMs : undefined;
 
     const taskId = generateTaskId();
 
-    // Record the dispatch as a system action message on the outbound DB.
-    // Today the host doesn't have a handler for action='dispatch_task' yet,
-    // so this is a no-op as far as actual worker spawn goes — but the
-    // record is preserved so a future host-side handler can pick up
-    // already-queued dispatches on first deploy.
     try {
       writeMessageOut({
         id: taskId,
@@ -102,10 +95,7 @@ export const dispatchTask: McpToolDefinition = {
           brief,
           scope,
           expected,
-          status: 'queued',
-          // Marker so the host-side log clearly shows this is the not-yet-
-          // implemented path. Remove when modules/dispatch/ lands.
-          _scaffold: true,
+          ...(timeoutMs ? { timeoutMs } : {}),
         }),
       });
     } catch (e) {
@@ -113,12 +103,11 @@ export const dispatchTask: McpToolDefinition = {
       return err(`Could not queue dispatch: ${e instanceof Error ? e.message : String(e)}`);
     }
 
-    log(`dispatch_task: scaffold-recorded task=${taskId} scope=${scope} brief.len=${brief.length}`);
+    log(`dispatch_task: queued task=${taskId} scope=${scope} brief.len=${brief.length}`);
 
     return ok(
-      `Dispatch infrastructure is scaffolded but not yet wired — task ${taskId} was recorded but no worker was actually spawned. ` +
-        `Continue handling the user's request yourself for now. ` +
-        `When dispatch goes live, this tool will return a task_id and the worker's summary will arrive as an inbound message tagged with that id on a later turn — you should treat that as the result, not this acknowledgement.`,
+      `Worker accepted (scope=${scope}). Result will arrive later as a separate inbound message wrapped in a <dispatch_result>…</dispatch_result> tag, with optional <dispatch_progress>…</dispatch_progress> updates beforehand. ` +
+        `When acknowledging the user, **do not mention the task_id** — it's an internal correlator, not user-facing data. Acknowledge naturally in your own voice (e.g. "I'll dig into that and report back", "On it, give me a minute"). The id is preserved in the dispatch tags themselves so you can match results to the original ask without leaking it to the user.`,
     );
   },
 };

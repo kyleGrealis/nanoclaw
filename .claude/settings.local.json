@@ -117,7 +117,19 @@
       "Bash(docker kill *)",
       "Bash(curl -s *)",
       "Bash(curl -sL *)",
-      "Bash(curl -fsSL *)"
+      "Bash(curl -fsSL *)",
+      "Bash(docker stop nanoclaw-v2-dm-with-kyle-1777661169397 *)",
+      "Bash(kill %1)",
+      "Bash(pkill -f \"Spawning container.*sess-1777330810055\")",
+      "Bash(xargs -r kill)",
+      "Bash(docker stop nanoclaw-v2-dm-with-kyle-1777661916929 *)",
+      "Bash(~/nanoclaw-andy/container/build.sh)",
+      "WebFetch(domain:g.co)",
+      "WebFetch(domain:gemini.google.com)",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "Bash(sed 's/\\\\\\(....\\\\\\)$/[\\\\1]/')",
+      "Bash(sed 's/\\\\\\(....\\\\\\)\\\\\\([\"'\"'\"']\\\\?\\\\\\)$/[\\\\1]\\\\2/')"
     ]
   }
 }

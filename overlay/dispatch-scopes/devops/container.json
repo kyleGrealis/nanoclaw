@@ -1,0 +1,24 @@
+{
+  "mcpServers": {},
+  "packages": {
+    "apt": [],
+    "npm": []
+  },
+  "additionalMounts": [
+    {
+      "hostPath": "/home/kyle",
+      "containerPath": "home",
+      "readonly": false
+    },
+    {
+      "hostPath": "/home/kyle/.config/nanoclaw/ssh",
+      "containerPath": "andy-ssh",
+      "readonly": true
+    }
+  ],
+  "skills": [],
+  "provider": "gemini",
+  "model": "gemini-3-flash-preview",
+  "groupName": "dispatch-devops",
+  "assistantName": "Worker"
+}

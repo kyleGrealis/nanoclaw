@@ -1,0 +1,19 @@
+{
+  "mcpServers": {},
+  "packages": {
+    "apt": [],
+    "npm": []
+  },
+  "additionalMounts": [
+    {
+      "hostPath": "/home/kyle",
+      "containerPath": "home",
+      "readonly": true
+    }
+  ],
+  "skills": [],
+  "provider": "gemini",
+  "model": "gemini-3-pro-preview",
+  "groupName": "dispatch-research",
+  "assistantName": "Worker"
+}
