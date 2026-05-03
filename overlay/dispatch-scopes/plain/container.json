@@ -4,7 +4,13 @@
     "apt": [],
     "npm": []
   },
-  "additionalMounts": [],
+  "additionalMounts": [
+    {
+      "hostPath": "/home/kyle",
+      "containerPath": "home",
+      "readonly": true
+    }
+  ],
   "skills": [],
   "provider": "gemini",
   "model": "gemini-3-flash-preview",

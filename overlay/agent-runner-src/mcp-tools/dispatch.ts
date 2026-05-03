@@ -44,7 +44,7 @@ export const dispatchTask: McpToolDefinition = {
   tool: {
     name: 'dispatch_task',
     description:
-      "Spin up an ephemeral worker sub-agent to handle a long-running or specialized task without blocking your primary channel. The worker runs in an isolated container with a scope-specific toolset and model (research → Gemini 3 Pro + Google Search; devops/data/plain → Gemini 3 Flash). It reports back a `<dispatch_result>` summary as a later inbound message — you do NOT block waiting for it. May also send `<dispatch_progress>` updates mid-flight; relay or paraphrase those to the user as you see fit. Use for: chewing through a large log file, executing a multi-step DevOps procedure, doing a deep research dive across many sources, anything that would otherwise eat your turn budget. Don't use for quick lookups (use the appropriate MCP directly) or for chatting with the user. Acknowledge the dispatch to the user in plain natural language ('I'll dig into that and report back'); **do not mention the returned task_id** — it's an internal correlator. Default timeout 5min, max 30min.",
+      "Spin up an ephemeral worker sub-agent to handle a long-running or specialized task without blocking your primary channel. The worker runs in an isolated container, reports back as a `<dispatch_result>` inbound message later, may emit `<dispatch_progress>` updates mid-flight; you do NOT block waiting. Use for: long log/data crunching, multi-step DevOps procedures, deep research dives — anything that would otherwise eat your turn budget. Don't use for quick lookups or for chatting with the user. Acknowledge in plain natural language ('I'll dig into that and report back'); **do not mention the returned task_id** — it's an internal correlator. Default timeout 5min, max 30min. **Pick the scope by what the worker needs to TOUCH, not by topic** — see scope reference below.",
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -57,7 +57,12 @@ export const dispatchTask: McpToolDefinition = {
           type: 'string',
           enum: ['research', 'devops', 'data', 'plain'],
           description:
-            'Which restricted toolset the worker gets. `research` = bash + recall + brave-style search; `devops` = bash + github + update_memory; `data` = bash + recall; `plain` = bash only. Defaults to `plain`.',
+            'Worker capability profile. CHOOSE BY ACCESS NEEDED, not by topic.\\n' +
+            '• `plain` (Gemini 3 Flash) — bash + RO read of /home/kyle. Default for general "look at files / compute / format" tasks. NO web, NO ssh, NO writable mounts.\\n' +
+            '• `research` (Gemini 3 PRO) — bash + RO /home/kyle + built-in Google Search grounding. For web research, multi-source synthesis, anything benefiting from deeper reasoning. Pro is ~5-10x cost — use sparingly, not for quick lookups.\\n' +
+            '• `devops` (Flash) — bash + RW /home/kyle + ssh keys to pi4/archMitters. For infra changes that need to write files or reach other machines.\\n' +
+            '• `data` (Flash) — bash + RO /home/kyle + RW /mnt/piCloud. For heavy data wrangling, sqlite, log mining, backup-set work.\\n' +
+            'Default if omitted: `plain`. If unsure, `plain` is the safe choice for filesystem inspection; escalate to `data` for big mounts, `devops` for write/ssh, `research` for web.',
         },
         expected: {
           type: 'string',

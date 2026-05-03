@@ -122,7 +122,8 @@ async function handleTaskProgress(
     log.warn('task_progress with empty text (ignored)', { taskId: state.taskId });
     return;
   }
-  state.lastProgressAt = Date.now();
+  // lastProgressAt is updated inside writeTaskProgressToParent when the event
+  // actually gets forwarded — keeps the throttle authoritative in one place.
   writeTaskProgressToParent(state, text);
 }
 

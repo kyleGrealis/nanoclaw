@@ -264,9 +264,24 @@ function escapeXml(str: string): string {
 
 /**
  * Strip `<internal>...</internal>` blocks from agent output, then trim.
- * Ported from v1 (src/v1/router.ts:25-27). Used to remove the agent's
- * own scratchpad/reasoning before a reply goes out over a channel.
+ *
+ * Lenient about malformed tags (Gemini occasionally emits orphan opens or
+ * orphan closes). Stripping rules, applied in order:
+ *   1. Balanced `<internal>...</internal>` pairs — removed entirely.
+ *   2. Orphan `<internal>` with no matching close — strips from the tag to
+ *      end of text (model meant to wrap private reasoning but forgot to
+ *      close; safer to drop the tail than leak it).
+ *   3. Orphan `</internal>` with no matching open — strips just the tag,
+ *      leaving surrounding text intact (the failure mode observed
+ *      2026-05-02 in #devops).
  */
 export function stripInternalTags(text: string): string {
-  return text.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
+  let out = text;
+  // 1. Balanced pairs
+  out = out.replace(/<internal>[\s\S]*?<\/internal>/g, '');
+  // 2. Orphan opener — drop from the tag to end
+  out = out.replace(/<internal>[\s\S]*$/g, '');
+  // 3. Orphan closer — drop just the tag
+  out = out.replace(/<\/internal>/g, '');
+  return out.trim();
 }

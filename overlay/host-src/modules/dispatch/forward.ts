@@ -25,12 +25,28 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+/** Minimum ms between forwarded progress events per worker. Workers
+ *  occasionally fire task_progress per tool call (5+ in 30s), which
+ *  spams the parent's inbound. Excess is silently dropped here so the
+ *  worker stays unaware (no model behavior change needed). */
+const PROGRESS_MIN_INTERVAL_MS = 15_000;
+
 export function writeTaskProgressToParent(state: DispatchState, text: string): void {
+  const sinceLast = Date.now() - state.lastProgressAt;
+  if (sinceLast < PROGRESS_MIN_INTERVAL_MS) {
+    log.debug('Dropping task_progress (under min interval)', {
+      taskId: state.taskId,
+      sinceLastMs: sinceLast,
+      minMs: PROGRESS_MIN_INTERVAL_MS,
+    });
+    return;
+  }
   const parent = getSession(state.parentSessionId);
   if (!parent) {
     log.warn('writeTaskProgressToParent: parent session vanished', { taskId: state.taskId });
     return;
   }
+  state.lastProgressAt = Date.now();
   const wrapped = `<dispatch_progress task_id="${state.taskId}" scope="${state.scope}">\n${text}\n</dispatch_progress>`;
   writeSessionMessage(parent.agent_group_id, parent.id, {
     id: `dispatch-progress-${state.taskId}-${Date.now()}`,

@@ -58,15 +58,19 @@ function copyScopeIntoWorkerDir(scope: Scope, taskId: string): string {
   fs.mkdirSync(dst, { recursive: true });
 
   const cfg = loadScopeConfig(scope);
-  fs.copyFileSync(cfg.claudeMdPath, path.join(dst, 'CLAUDE.md'));
   fs.copyFileSync(cfg.containerJsonPath, path.join(dst, 'container.json'));
 
-  // CLAUDE.local.md is required by group-init; seed empty to keep it from
-  // copying any stale persona content. Workers don't have memory.
-  const claudeLocal = path.join(dst, 'CLAUDE.local.md');
-  if (!fs.existsSync(claudeLocal)) {
-    fs.writeFileSync(claudeLocal, '# Worker scratch (ephemeral)\n');
-  }
+  // Write scope persona to CLAUDE.local.md, NOT CLAUDE.md. The host's
+  // composeGroupClaudeMd() runs on every spawn and rewrites CLAUDE.md from
+  // a shared base + module fragments — copying a persona to CLAUDE.md gets
+  // clobbered. CLAUDE.local.md is preserved (compose only creates it if
+  // missing, never overwrites). The composed CLAUDE.md still pulls the
+  // module fragments (telling the worker which tools exist), and the scope
+  // persona in CLAUDE.local.md supplements/overrides that with the
+  // worker-specific instructions (use task_progress/complete_task, don't
+  // send_message, etc.).
+  const personaContent = fs.readFileSync(cfg.claudeMdPath, 'utf8');
+  fs.writeFileSync(path.join(dst, 'CLAUDE.local.md'), personaContent);
 
   return dst;
 }
@@ -145,7 +149,10 @@ export async function spawnWorker(input: SpawnWorkerInput): Promise<DispatchStat
     workerFolderName: folderName,
     startedAt: Date.now(),
     timeoutMs: input.timeoutMs,
-    lastProgressAt: Date.now(),
+    // Initialized to 0 (epoch) so the first progress event always passes the
+    // forward.ts min-interval throttle. Subsequent progress events are
+    // throttled to PROGRESS_MIN_INTERVAL_MS apart.
+    lastProgressAt: 0,
     completed: false,
   };
   recordDispatch(state);
