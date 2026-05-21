@@ -36,7 +36,7 @@ registerResource({
   plural: 'groups',
   table: 'agent_groups',
   description:
-    'Agent group — a logical agent identity. Each group has its own workspace folder (CLAUDE.md, skills, container config), conversation history, and container image. Multiple messaging groups can be wired to one agent group.',
+    'Agent group — a logical agent identity. Each group has its own workspace folder (GEMINI.md, skills, container config), conversation history, and container image. Multiple messaging groups can be wired to one agent group.',
   idColumn: 'id',
   scopeField: 'id',
   columns: [
@@ -52,7 +52,7 @@ registerResource({
       name: 'folder',
       type: 'string',
       description:
-        'Directory name under groups/ on the host. Must be unique. Contains CLAUDE.md, skills/, and container.json. Cannot be changed after creation.',
+        'Directory name under groups/ on the host. Must be unique. Contains GEMINI.md, skills/, and container.json. Cannot be changed after creation.',
       required: true,
     },
     { name: 'created_at', type: 'string', description: 'Auto-set.', generated: true },

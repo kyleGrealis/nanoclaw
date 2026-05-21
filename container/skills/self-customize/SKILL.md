@@ -1,6 +1,6 @@
 ---
 name: self-customize
-description: Customize your own agent — add capabilities, install packages, add MCP servers, edit code or CLAUDE.md. Use when the user asks you to add a feature, install a tool, or modify how you work. For non-trivial code changes, delegate to a builder agent via create_agent.
+description: Customize your own agent — add capabilities, install packages, add MCP servers, edit code or GEMINI.md. Use when the user asks you to add a feature, install a tool, or modify how you work. For non-trivial code changes, delegate to a builder agent via create_agent.
 ---
 
 # Self-Customization
@@ -11,7 +11,7 @@ You can modify your own environment. Different kinds of changes have different w
 
 **What needs to change?**
 
-- **`CLAUDE.local.md` or files in your workspace** → Edit directly, no approval needed. Your workspace (`/workspace/agent/`) is persisted on the host. (Note: the composed `CLAUDE.md` itself is read-only and regenerated every spawn — write to `CLAUDE.local.md` instead.)
+- **`GEMINI.local.md` or files in your workspace** → Edit directly, no approval needed. Your workspace (`/workspace/agent/`) is persisted on the host. (Note: the composed `GEMINI.md` itself is read-only and regenerated every spawn — write to `GEMINI.local.md` instead.)
 - **System package (apt) or global npm package** → `install_packages`. Requires admin approval. On approval, image rebuild + container restart happen automatically.
 - **MCP server** → `add_mcp_server`. Requires admin approval. On approval, container restarts with the new server wired up (no rebuild — bun runs TS directly).
 - **Your source code or Dockerfile** → Delegate to a builder agent via `create_agent` (see below).

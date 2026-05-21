@@ -5,7 +5,7 @@
  */
 
 export const SCHEMA = `
--- Agent workspaces: folder, skills, CLAUDE.md.
+-- Agent workspaces: folder, skills, GEMINI.md.
 -- All workspaces are equal; privilege lives on users, not groups.
 -- Container config lives in the container_configs table (see migration 014).
 CREATE TABLE agent_groups (

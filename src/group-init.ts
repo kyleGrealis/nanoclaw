@@ -42,9 +42,9 @@ const DEFAULT_SETTINGS_JSON =
  * Source code and skills are shared RO mounts — not copied per-group.
  * Skill symlinks are synced at spawn time by container-runner.ts.
  *
- * The composed `CLAUDE.md` is NOT written here — it's regenerated on every
+ * The composed `GEMINI.md` is NOT written here — it's regenerated on every
  * spawn by `composeGroupClaudeMd()` (see `claude-md-compose.ts`). Initial
- * per-group instructions (if provided) seed `CLAUDE.local.md`.
+ * per-group instructions (if provided) seed `GEMINI.local.md`.
  */
 export function initGroupFilesystem(group: AgentGroup, opts?: { instructions?: string }): void {
   const initialized: string[] = [];
@@ -56,13 +56,13 @@ export function initGroupFilesystem(group: AgentGroup, opts?: { instructions?: s
     initialized.push('groupDir');
   }
 
-  // groups/<folder>/CLAUDE.local.md — per-group agent memory, auto-loaded by
+  // groups/<folder>/GEMINI.local.md — per-group agent memory, auto-loaded by
   // Claude Code. Seeded with caller-provided instructions on first creation.
-  const claudeLocalFile = path.join(groupDir, 'CLAUDE.local.md');
+  const claudeLocalFile = path.join(groupDir, 'GEMINI.local.md');
   if (!fs.existsSync(claudeLocalFile)) {
     const body = opts?.instructions ? opts.instructions + '\n' : '';
     fs.writeFileSync(claudeLocalFile, body);
-    initialized.push('CLAUDE.local.md');
+    initialized.push('GEMINI.local.md');
   }
 
   // Ensure container_configs row exists in the DB. Idempotent — no-op if

@@ -1,6 +1,6 @@
 ---
 name: migrate-from-v1
-description: Finish migrating a NanoClaw v1 install into v2. Run after `bash migrate-v2.sh` completes. Seeds the owner, cleans up CLAUDE.local.md files, reconciles container configs, and helps port custom v1 code. Triggers on "migrate from v1", "finish migration", "v1 migration".
+description: Finish migrating a NanoClaw v1 install into v2. Run after `bash migrate-v2.sh` completes. Seeds the owner, cleans up GEMINI.local.md files, reconciles container configs, and helps port custom v1 code. Triggers on "migrate from v1", "finish migration", "v1 migration".
 ---
 
 # Finish v1 → v2 migration
@@ -9,7 +9,7 @@ description: Finish migrating a NanoClaw v1 install into v2. Run after `bash mig
 
 - .env keys merged
 - v2 DB seeded (agent_groups, messaging_groups, wiring)
-- Group folders copied (v1 CLAUDE.md → v2 CLAUDE.local.md)
+- Group folders copied (v1 CLAUDE.md → v2 GEMINI.local.md)
 - Session data copied with conversation continuity (incl. Claude Code memory + JSONL transcripts)
 - Scheduled tasks ported
 - Channel code installed and auth state copied (incl. WhatsApp Baileys keystore)
@@ -17,7 +17,7 @@ description: Finish migrating a NanoClaw v1 install into v2. Run after `bash mig
 - Container skills copied
 - Container image built
 
-Your job is the parts that need human judgment: triage any failed steps, seed the owner, clean up CLAUDE.local.md files, reconcile configs, and port any fork customizations.
+Your job is the parts that need human judgment: triage any failed steps, seed the owner, clean up GEMINI.local.md files, reconcile configs, and port any fork customizations.
 
 Read `logs/setup-migration/handoff.json` first — it has `overall_status`, per-step results in `steps`, and a `followups` list.
 
@@ -122,11 +122,11 @@ UPDATE messaging_groups SET unknown_sender_policy = '<chosen_policy>'
 WHERE id IN (SELECT id FROM messaging_groups WHERE channel_type IN (<migrated_channels>))
 ```
 
-## Phase 2: Clean up CLAUDE.local.md
+## Phase 2: Clean up GEMINI.local.md
 
-The migration copied v1's entire CLAUDE.md into CLAUDE.local.md for each group. This file now contains v1 boilerplate that v2 handles through its own composed fragments (`container/CLAUDE.md` + `.claude-fragments/module-*.md`). The user's customizations are buried inside.
+The migration copied v1's entire CLAUDE.md into GEMINI.local.md for each group. This file now contains v1 boilerplate that v2 handles through its own composed fragments (`container/CLAUDE.md` + `.claude-fragments/module-*.md`). The user's customizations are buried inside.
 
-For each group that has a `CLAUDE.local.md`:
+For each group that has a `GEMINI.local.md`:
 
 1. Read the file.
 2. Read the v1 template it was based on. Determine which template by checking the v1 install:
@@ -156,9 +156,9 @@ For each group that has a `CLAUDE.local.md`:
    - `/workspace/ipc/` → gone; remove references
    - `/workspace/extra/` → v2 uses `container.json` `additionalMounts`; keep but note the path may change
 6. Keep the `# Name` heading and first paragraph (identity) — this is the user's agent personality.
-7. Show the user the proposed new CLAUDE.local.md before writing it. Use `AskUserQuestion`: "Here's what I'd keep — look right?" with options to approve, edit, or keep the original.
+7. Show the user the proposed new GEMINI.local.md before writing it. Use `AskUserQuestion`: "Here's what I'd keep — look right?" with options to approve, edit, or keep the original.
 
-If a CLAUDE.local.md has no user customizations (pure template copy), write a minimal file with just the identity heading.
+If a GEMINI.local.md has no user customizations (pure template copy), write a minimal file with just the identity heading.
 
 ## Phase 3: Container config
 
@@ -194,7 +194,7 @@ If there are commits:
 ## Principles
 
 - **v1 checkout is read-only.** Never modify files under `handoff.v1_path`.
-- **Show before writing.** Show diffs/proposed content before modifying CLAUDE.local.md or container.json.
+- **Show before writing.** Show diffs/proposed content before modifying GEMINI.local.md or container.json.
 - **Mask credentials** when displaying (first 4 + `...` + last 4 characters).
 - **`handoff.json` is the recovery point.** If context gets compacted, re-read it and `git status` to recover state.
 

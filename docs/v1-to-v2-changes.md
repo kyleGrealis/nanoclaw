@@ -123,10 +123,10 @@ Owner gets seeded during the `/migrate-from-v1` skill's interview phase ("Which 
 **v1:** `groups/<folder>/CLAUDE.md` and optional `logs/`. `CLAUDE.md` was a plain instruction file, group-specific.
 
 **v2:** each group still lives at `groups/<folder>/`, but the shape is richer:
-- `CLAUDE.md` — **composed at container spawn** from `.claude-shared.md` (symlink to global) + `.claude-fragments/*.md` (module fragments) + `CLAUDE.local.md`. **Don't edit `CLAUDE.md` directly.**
-- `CLAUDE.local.md` — per-group content. The migration writes v1's old `CLAUDE.md` here.
+- `CLAUDE.md` — **composed at container spawn** from `.claude-shared.md` (symlink to global) + `.claude-fragments/*.md` (module fragments) + `GEMINI.local.md`. **Don't edit `CLAUDE.md` directly.**
+- `GEMINI.local.md` — per-group content. The migration writes v1's old `CLAUDE.md` here.
 - `container.json` — optional per-group container config (apt deps, env, mounts). v1's `registered_groups.container_config` JSON is close but not identical — the migration stores the v1 payload at `groups/<folder>/.v1-container-config.json` for the skill to reconcile, rather than silently mapping it.
-- `.claude-fragments/` and `.claude-shared.md` are installed by `initGroupFilesystem()` the first time the host touches the group, so the migration only has to write `CLAUDE.local.md` and leave the scaffolding to the host.
+- `.claude-fragments/` and `.claude-shared.md` are installed by `initGroupFilesystem()` the first time the host touches the group, so the migration only has to write `GEMINI.local.md` and leave the scaffolding to the host.
 
 ---
 
