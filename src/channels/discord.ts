@@ -33,6 +33,10 @@ registerChannelAdapter('discord', {
       botToken: env.DISCORD_BOT_TOKEN,
       extractReplyContext,
       supportsThreads: true,
+      // Discord caps message content at 2000 characters and silently truncates
+      // beyond that. Have the bridge chunk at paragraph/line/word boundaries
+      // instead. 1990 leaves a small safety margin.
+      maxTextLength: 1990,
     });
   },
 });

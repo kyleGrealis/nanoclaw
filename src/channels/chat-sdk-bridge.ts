@@ -148,13 +148,33 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
           width: (att as unknown as Record<string, unknown>).width,
           height: (att as unknown as Record<string, unknown>).height,
         };
+        const attUrl = (att as unknown as Record<string, unknown>).url;
         if (att.fetchData) {
           try {
             const buffer = await att.fetchData();
             entry.data = buffer.toString('base64');
           } catch (err) {
-            log.warn('Failed to download attachment', { type: att.type, err });
+            log.warn('Failed to download attachment via fetchData', { type: att.type, err });
           }
+        } else if (typeof attUrl === 'string' && attUrl.length > 0) {
+          // Discord (and other Chat SDK adapters that surface a public CDN URL
+          // without a fetchData() helper) — download from the URL ourselves so
+          // session-manager can stage it into the session inbox and the
+          // formatter can announce a usable /workspace/inbox/... path.
+          try {
+            const res = await fetch(attUrl);
+            if (!res.ok) {
+              log.warn('Attachment URL download failed', { type: att.type, url: attUrl, status: res.status });
+            } else {
+              const buffer = Buffer.from(await res.arrayBuffer());
+              entry.data = buffer.toString('base64');
+            }
+          } catch (err) {
+            log.warn('Failed to download attachment via url', { type: att.type, url: attUrl, err });
+          }
+        }
+        if (typeof attUrl === 'string' && attUrl.length > 0) {
+          entry.url = attUrl;
         }
         enriched.push(entry);
       }

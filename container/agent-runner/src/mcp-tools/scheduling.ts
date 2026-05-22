@@ -36,11 +36,15 @@ export const scheduleTask: McpToolDefinition = {
   tool: {
     name: 'schedule_task',
     description:
-      `Schedule a one-shot or recurring task. The user's timezone is declared in the <context timezone="..."/> header of your prompt — interpret the user's "9pm" etc. in that zone. Cron expressions are interpreted in the user's timezone too.`,
+      `Schedule a one-shot or recurring task. When the task fires, it wakes a fresh agent session and the 'prompt' is delivered to you AS INSTRUCTIONS — not as a literal message to send. You then run any tools you need (web_search, calendar, drive, send_message, etc.) and produce the final output dynamically at execution time. This means recurring reports CAN and SHOULD contain live data: write the prompt as instructions like "look up X with web_search, format as Y, send to channel Z" rather than baking in static content. The user's timezone is declared in the <context timezone="..."/> header — interpret "9pm" etc. in that zone. Cron expressions are interpreted in the user's timezone too.`,
     inputSchema: {
       type: 'object' as const,
       properties: {
-        prompt: { type: 'string', description: 'Task instructions/prompt' },
+        prompt: {
+          type: 'string',
+          description:
+            'Instructions for the future agent session that will run when this task fires. NOT a literal message to send. Write it like a delegated task: "Use web_search to fetch the current weather for Seaside FL, format as the standard weather report (greeting, date, 🌡️ high/low, ☁️ conditions, 💨 wind, TL;DR), and send to the weather channel." The prompt is static; the output is generated live each run using whatever tools are available.',
+        },
         processAfter: {
           type: 'string',
           description:
@@ -249,7 +253,11 @@ export const updateTask: McpToolDefinition = {
       type: 'object' as const,
       properties: {
         taskId: { type: 'string', description: 'Series id of the task to update (as shown by list_tasks)' },
-        prompt: { type: 'string', description: 'New task prompt (optional)' },
+        prompt: {
+          type: 'string',
+          description:
+            'New task prompt (optional). Same semantics as schedule_task: this is INSTRUCTIONS for the future session, not a literal message. Tools (web_search, calendar, etc.) run at execution time, so prefer instruction-style prompts that fetch live data over baked-in static content.',
+        },
         recurrence: {
           type: 'string',
           description: 'New cron expression (optional). Pass empty string to clear and make the task one-shot.',

@@ -219,7 +219,7 @@ export function resolveProviderName(
   sessionProvider: string | null | undefined,
   containerConfigProvider: string | null | undefined,
 ): string {
-  return (sessionProvider || containerConfigProvider || 'gemini').toLowerCase();
+  return (sessionProvider || containerConfigProvider || 'claude').toLowerCase();
 }
 
 function resolveProviderContribution(
@@ -256,7 +256,7 @@ function buildMounts(
   const claudeDir = path.join(DATA_DIR, 'v2-sessions', agentGroup.id, '.claude-shared');
   syncSkillSymlinks(claudeDir, containerConfig);
 
-  // Compose GEMINI.md fresh every spawn from the shared base, enabled skill
+  // Compose CLAUDE.md fresh every spawn from the shared base, enabled skill
   // fragments, and MCP server instructions. See `claude-md-compose.ts`.
   composeGroupClaudeMd(agentGroup);
 
@@ -277,16 +277,16 @@ function buildMounts(
     mounts.push({ hostPath: containerJsonPath, containerPath: '/workspace/agent/container.json', readonly: true });
   }
 
-  // Composer-managed GEMINI.md artifacts — nested RO mounts. These are
+  // Composer-managed CLAUDE.md artifacts — nested RO mounts. These are
   // regenerated from the shared base + fragments on every spawn; any
   // agent-side writes would be clobbered, so enforce read-only. Only
   // GEMINI.local.md (per-group memory) remains RW via the group-dir mount.
-  // `.claude-shared.md` is a symlink whose target (`/app/GEMINI.md`) is
+  // `.claude-shared.md` is a symlink whose target (`/app/CLAUDE.md`) is
   // already RO-mounted, so writes through it fail regardless — no need for
   // a nested mount there.
-  const composedClaudeMd = path.join(groupDir, 'GEMINI.md');
+  const composedClaudeMd = path.join(groupDir, 'CLAUDE.md');
   if (fs.existsSync(composedClaudeMd)) {
-    mounts.push({ hostPath: composedClaudeMd, containerPath: '/workspace/agent/GEMINI.md', readonly: true });
+    mounts.push({ hostPath: composedClaudeMd, containerPath: '/workspace/agent/CLAUDE.md', readonly: true });
   }
   const fragmentsDir = path.join(groupDir, '.claude-fragments');
   if (fs.existsSync(fragmentsDir)) {
@@ -299,11 +299,11 @@ function buildMounts(
     mounts.push({ hostPath: globalDir, containerPath: '/workspace/global', readonly: true });
   }
 
-  // Shared GEMINI.md — read-only, imported by the composed entry point via
+  // Shared CLAUDE.md — read-only, imported by the composed entry point via
   // the `.claude-shared.md` symlink inside the group dir.
-  const sharedClaudeMd = path.join(process.cwd(), 'container', 'GEMINI.md');
+  const sharedClaudeMd = path.join(process.cwd(), 'container', 'CLAUDE.md');
   if (fs.existsSync(sharedClaudeMd)) {
-    mounts.push({ hostPath: sharedClaudeMd, containerPath: '/app/GEMINI.md', readonly: true });
+    mounts.push({ hostPath: sharedClaudeMd, containerPath: '/app/CLAUDE.md', readonly: true });
   }
 
   // Per-group .claude-shared at /home/node/.claude (Claude state, settings,

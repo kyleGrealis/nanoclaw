@@ -1,16 +1,16 @@
 /**
- * GEMINI.md composition for agent groups.
+ * CLAUDE.md composition for agent groups.
  *
  * Replaces the per-group "written once at init, owned by the group" pattern
  * with a host-regenerated entry point that imports:
- *   - a shared base (`container/GEMINI.md` mounted RO at `/app/GEMINI.md`)
+ *   - a shared base (`container/CLAUDE.md` mounted RO at `/app/CLAUDE.md`)
  *   - optional per-skill fragments (skills that ship `instructions.md`)
  *   - optional per-MCP-server fragments (inline `instructions` field in
  *     `container.json`)
- *   - per-group agent memory (`GEMINI.local.md`, auto-loaded by Claude Code)
+ *   - per-group agent memory (`CLAUDE.local.md`, auto-loaded by Claude Code)
  *
  * Runs on every spawn from `container-runner.buildMounts()`. Deterministic —
- * same inputs produce the same GEMINI.md, and stale fragments are pruned.
+ * same inputs produce the same CLAUDE.md, and stale fragments are pruned.
  *
  * See `docs/claude-md-composition.md` for the full design.
  */
@@ -25,7 +25,7 @@ import type { AgentGroup } from './types.js';
 
 // Symlink targets are container paths — dangling on host (hence the readlink
 // dance instead of existsSync), valid inside the container via RO mounts.
-const SHARED_CLAUDE_MD_CONTAINER_PATH = '/app/GEMINI.md';
+const SHARED_CLAUDE_MD_CONTAINER_PATH = '/app/CLAUDE.md';
 const SHARED_SKILLS_CONTAINER_BASE = '/app/skills';
 const SHARED_MCP_TOOLS_CONTAINER_BASE = '/app/src/mcp-tools';
 
@@ -33,12 +33,12 @@ const SHARED_MCP_TOOLS_CONTAINER_BASE = '/app/src/mcp-tools';
 // Resolved at call time (process.cwd() = project root) so tests can swap cwd.
 const MCP_TOOLS_HOST_SUBPATH = path.join('container', 'agent-runner', 'src', 'mcp-tools');
 
-const COMPOSED_HEADER = '<!-- Composed at spawn — do not edit. Edit GEMINI.local.md for per-group content. -->';
+const COMPOSED_HEADER = '<!-- Composed at spawn — do not edit. Edit CLAUDE.local.md for per-group content. -->';
 
 /**
- * Regenerate `groups/<folder>/GEMINI.md` from the shared base, enabled skill
+ * Regenerate `groups/<folder>/CLAUDE.md` from the shared base, enabled skill
  * fragments, and MCP server fragments declared in `container.json`. Creates
- * an empty `GEMINI.local.md` if missing.
+ * an empty `CLAUDE.local.md` if missing.
  */
 export function composeGroupClaudeMd(group: AgentGroup): void {
   const groupDir = path.resolve(GROUPS_DIR, group.folder);
@@ -129,7 +129,7 @@ export function composeGroupClaudeMd(group: AgentGroup): void {
   const body = [COMPOSED_HEADER, ...imports, ''].join('\n');
   writeAtomic(path.join(groupDir, 'CLAUDE.md'), body);
 
-  const localFile = path.join(groupDir, 'GEMINI.local.md');
+  const localFile = path.join(groupDir, 'CLAUDE.local.md');
   if (!fs.existsSync(localFile)) {
     fs.writeFileSync(localFile, '');
   }
@@ -141,10 +141,10 @@ export function composeGroupClaudeMd(group: AgentGroup): void {
  *
  * For each group dir:
  *   - remove `.claude-global.md` symlink if present
- *   - rename `CLAUDE.md` → `GEMINI.local.md` (only if `GEMINI.local.md`
+ *   - rename `CLAUDE.md` → `CLAUDE.local.md` (only if `CLAUDE.local.md`
  *     doesn't already exist — preserves pre-cutover content as per-group
  *     memory; after the first spawn regenerates `CLAUDE.md`, this branch
- *     is skipped because `GEMINI.local.md` now exists)
+ *     is skipped because `CLAUDE.local.md` now exists)
  *
  * Globally:
  *   - delete `groups/global/` (content already in `container/CLAUDE.md`)
@@ -170,10 +170,10 @@ export function migrateGroupsToClaudeLocal(): void {
     }
 
     const claudeMd = path.join(groupDir, 'CLAUDE.md');
-    const claudeLocal = path.join(groupDir, 'GEMINI.local.md');
+    const claudeLocal = path.join(groupDir, 'CLAUDE.local.md');
     if (fs.existsSync(claudeMd) && !fs.existsSync(claudeLocal)) {
       fs.renameSync(claudeMd, claudeLocal);
-      actions.push(`${entry.name}/CLAUDE.md → GEMINI.local.md`);
+      actions.push(`${entry.name}/CLAUDE.md → CLAUDE.local.md`);
     }
   }
 
@@ -184,7 +184,7 @@ export function migrateGroupsToClaudeLocal(): void {
   }
 
   if (actions.length > 0) {
-    log.info('Migrated groups to GEMINI.local.md model', { actions });
+    log.info('Migrated groups to CLAUDE.local.md model', { actions });
   }
 }
 
