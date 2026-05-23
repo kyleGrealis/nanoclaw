@@ -190,12 +190,7 @@ export function syncYamlConfigs(): void {
   }
 }
 
-function syncSessionTasks(
-  db: Database.Database,
-  sessionId: string,
-  groupDir: string,
-  yamlTasks: YamlTask[],
-): void {
+function syncSessionTasks(db: Database.Database, sessionId: string, groupDir: string, yamlTasks: YamlTask[]): void {
   const yamlTaskIds = new Set(yamlTasks.map((t) => t.id));
 
   // Cancel any active/pending tasks in the DB that are NOT in the YAML file anymore
@@ -246,8 +241,12 @@ function syncSessionTasks(
 
     // Check if task already exists as pending/paused
     const existing = db
-      .prepare("SELECT id, content, recurrence, process_after FROM messages_in WHERE series_id = ? AND kind = 'task' AND status IN ('pending', 'paused') ORDER BY seq DESC LIMIT 1")
-      .get(task.id) as { id: string; content: string; recurrence: string | null; process_after: string | null } | undefined;
+      .prepare(
+        "SELECT id, content, recurrence, process_after FROM messages_in WHERE series_id = ? AND kind = 'task' AND status IN ('pending', 'paused') ORDER BY seq DESC LIMIT 1",
+      )
+      .get(task.id) as
+      | { id: string; content: string; recurrence: string | null; process_after: string | null }
+      | undefined;
 
     const taskContent = JSON.stringify({ prompt, script });
 
@@ -275,7 +274,7 @@ function syncSessionTasks(
       const seq = nextEvenSeq(db);
       db.prepare(
         `INSERT INTO messages_in (id, seq, timestamp, status, tries, process_after, recurrence, kind, platform_id, channel_type, thread_id, content, series_id)
-         VALUES (?, ?, datetime('now'), 'pending', 0, ?, ?, 'task', ?, ?, ?, ?, ?)`
+         VALUES (?, ?, datetime('now'), 'pending', 0, ?, ?, 'task', ?, ?, ?, ?, ?)`,
       ).run(
         task.id,
         seq,
@@ -285,7 +284,7 @@ function syncSessionTasks(
         task.channel_type ?? null,
         task.thread_id ?? null,
         taskContent,
-        task.id
+        task.id,
       );
       log.info('Created new scheduled task', { taskId: task.id, nextRun, recurrence, sessionId });
     }
