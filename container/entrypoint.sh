@@ -11,6 +11,17 @@
 
 set -e
 
+# Add a passwd entry for the current uid if missing. The host runs the container
+# as the host user's uid (often not 1000), and the base image only knows the
+# baked-in `node` user. Tools that call getpwuid() (ssh, git, etc.) fail without
+# an entry. /etc/passwd is chmod 666 in the Dockerfile so this append works.
+if ! getent passwd "$(id -u)" >/dev/null 2>&1; then
+  echo "agent:x:$(id -u):$(id -g)::/workspace/agent:/bin/bash" >> /etc/passwd
+fi
+if ! getent group "$(id -g)" >/dev/null 2>&1; then
+  echo "agent:x:$(id -g):" >> /etc/group
+fi
+
 mnemon setup --target claude-code --yes --global >/dev/stderr 2>&1
 
 cat > /tmp/input.json

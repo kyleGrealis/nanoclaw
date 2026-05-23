@@ -459,7 +459,13 @@ async function buildContainerArgs(
   const imageTag = containerConfig.imageTag || CONTAINER_IMAGE;
   args.push(imageTag);
 
-  args.push('-c', 'exec bun run /app/src/index.ts');
+  // Ensure /etc/passwd has an entry for the container uid before exec. Tools
+  // that call getpwuid() (ssh, git, ...) fail without it. /etc/passwd is
+  // chmod 666 in the Dockerfile so this append works as the non-root user.
+  args.push(
+    '-c',
+    'if ! getent passwd "$(id -u)" >/dev/null 2>&1; then echo "agent:x:$(id -u):$(id -g)::/workspace/agent:/bin/bash" >> /etc/passwd; fi; if ! getent group "$(id -g)" >/dev/null 2>&1; then echo "agent:x:$(id -g):" >> /etc/group; fi; exec bun run /app/src/index.ts',
+  );
 
   return args;
 }
