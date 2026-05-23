@@ -15,8 +15,8 @@ import {
 } from './formatter.js';
 import type { AgentProvider, AgentQuery, ProviderEvent } from './providers/types.js';
 
-const POLL_INTERVAL_MS = 1000;
-const ACTIVE_POLL_INTERVAL_MS = 500;
+const POLL_INTERVAL_MS = 150;
+const ACTIVE_POLL_INTERVAL_MS = 150;
 
 function log(msg: string): void {
   console.error(`[poll-loop] ${msg}`);
