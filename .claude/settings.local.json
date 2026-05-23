@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker run *)",
+      "Bash(git config *)",
+      "Bash(git ls-remote *)",
+      "Bash(git check-ignore *)",
+      "Bash(git remote *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(onecli agents *)",
+      "Read(//home/kyle/**)",
+      "Bash(./container/build.sh *)",
+      "Bash(ncl groups *)",
+      "Bash(ps -p 74225 -o etime,stat,pcpu,rss,cmd)",
+      "Bash(pstree -p 74225)",
+      "Bash(ps -C dockerd -o pid,etime,pcpu,rss --no-headers)",
+      "Bash(iostat -x 1 2)",
+      "Bash(git -C /home/kyle/nanoclaw-andy log --since=\"48 hours ago\" --pretty=format:\"%h %ad %s\" --date=short)",
+      "Bash(git -C /home/kyle/nanoclaw-andy status --short)",
+      "Bash(git -C /home/kyle/nanoclaw-andy show 013ccbf --stat)",
+      "Bash(git -C /home/kyle/nanoclaw-andy show 2a027c7 --stat)",
+      "Bash(git -C /home/kyle/nanoclaw-andy log --oneline origin/main..HEAD)",
+      "Bash(git -C /home/kyle/nanoclaw-andy rev-parse --abbrev-ref --symbolic-full-name '@{u}')",
+      "Bash(git -C /home/kyle/nanoclaw-andy diff --stat HEAD container/agent-runner/src/providers/gemini.ts container/agent-runner/src/providers/index.ts src/claude-md-compose.ts src/container-runner.ts)",
+      "Bash(/home/kyle/.bun/bin/bun --cwd container/agent-runner run typecheck)",
+      "Bash(/home/kyle/.bun/bin/bun run *)",
+      "WebFetch(domain:developers.googleblog.com)",
+      "WebFetch(domain:dev.to)",
+      "WebFetch(domain:geminicli.com)",
+      "WebFetch(domain:discuss.ai.google.dev)",
+      "WebFetch(domain:agentpedia.codes)",
+      "Bash(onecli help *)",
+      "Bash(git -C /home/kyle/nanoclaw-andy log --all --oneline --grep='mount')",
+      "Bash(git -C /home/kyle/nanoclaw-andy show 31ccc61 --stat)",
+      "Bash(git *)"
+    ]
+  }
+}
