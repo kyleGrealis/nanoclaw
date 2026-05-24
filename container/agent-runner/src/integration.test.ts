@@ -462,3 +462,83 @@ class InvalidSessionProvider {
     };
   }
 }
+
+describe('cron task error routing', () => {
+  beforeEach(() => {
+    // Seed the logs destination
+    getInboundDb()
+      .prepare(
+        `INSERT OR REPLACE INTO destinations (name, display_name, type, channel_type, platform_id, agent_group_id)
+         VALUES ('logs-and-issues', 'Logs and Issues', 'channel', 'discord', 'chan-logs', NULL)`,
+      )
+      .run();
+  });
+
+  function insertTaskMessage(
+    id: string,
+    seriesId: string,
+    content: object,
+    opts?: { platformId?: string; channelType?: string; threadId?: string },
+  ) {
+    getInboundDb()
+      .prepare(
+        `INSERT INTO messages_in (id, kind, timestamp, status, platform_id, channel_type, thread_id, series_id, content)
+         VALUES (?, 'task', datetime('now'), 'pending', ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id,
+        opts?.platformId ?? null,
+        opts?.channelType ?? null,
+        opts?.threadId ?? null,
+        seriesId,
+        JSON.stringify(content),
+      );
+  }
+
+  it('routes query execution errors for tasks to logs-and-issues', async () => {
+    insertTaskMessage('t1', 'morning-report', { prompt: 'Morning report instructions' });
+
+    const provider = new ThrowingProvider('Model overloaded');
+    const controller = new AbortController();
+    const loopPromise = runPollLoopWithTimeout(provider as unknown as MockProvider, controller.signal, 2000);
+
+    // Wait for the query error to trigger outbound writes. We expect 2 outbound messages:
+    // 1. The query error response on the default channel
+    // 2. The task error routing to logs-and-issues (platform_id = 'chan-logs')
+    await waitFor(() => getUndeliveredMessages().length >= 2, 2000);
+    controller.abort();
+
+    const out = getUndeliveredMessages();
+    const logMsg = out.find((m) => m.platform_id === 'chan-logs');
+    expect(logMsg).toBeDefined();
+    expect(JSON.parse(logMsg!.content).text).toContain('❌ morning-report task failed');
+    expect(JSON.parse(logMsg!.content).text).toContain('Query execution failed: Model overloaded');
+
+    await loopPromise.catch(() => {});
+  });
+
+  it('routes pre-task script execution errors to logs-and-issues', async () => {
+    // An invalid script that will fail execution (e.g. exit 1 or produce no JSON output)
+    insertTaskMessage('t2', 'evening-weather', {
+      prompt: 'Weather instructions',
+      script: 'echo "not valid json"; exit 1',
+    });
+
+    const provider = new MockProvider({}, () => 'should not run');
+    const controller = new AbortController();
+    const loopPromise = runPollLoopWithTimeout(provider, controller.signal, 2000);
+
+    // We expect the script to fail, skip the task, and write a failure message to logs-and-issues.
+    // The poll loop will then sleep since keep is empty. We only expect 1 outbound message to logs-and-issues.
+    await waitFor(() => getUndeliveredMessages().length >= 1, 2000);
+    controller.abort();
+
+    const out = getUndeliveredMessages();
+    const logMsg = out.find((m) => m.platform_id === 'chan-logs');
+    expect(logMsg).toBeDefined();
+    expect(JSON.parse(logMsg!.content).text).toContain('❌ evening-weather task failed');
+    expect(JSON.parse(logMsg!.content).text).toContain('Pre-task script execution failed');
+
+    await loopPromise.catch(() => {});
+  });
+});

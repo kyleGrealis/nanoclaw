@@ -154,6 +154,11 @@ export async function runPollLoop(config: PollLoopConfig): Promise<void> {
       markCompleted(skipped);
       log(`Pre-task script skipped ${skipped.length} task(s): ${skipped.join(', ')}`);
     }
+    if (preTask.failed && preTask.failed.length > 0) {
+      for (const fail of preTask.failed) {
+        routeTaskError(fail.seriesId || 'scheduled', fail.error);
+      }
+    }
     // MODULE-HOOK:scheduling-pre-task:end
 
     if (keep.length === 0) {
@@ -189,6 +194,12 @@ export async function runPollLoop(config: PollLoopConfig): Promise<void> {
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       log(`Query error: ${errMsg}`);
+
+      // If any of the messages in the batch were tasks, route errors to #logs-and-issues
+      const taskMessages = keep.filter((m) => m.kind === 'task');
+      for (const taskMsg of taskMessages) {
+        routeTaskError(taskMsg.series_id || 'scheduled', `Query execution failed: ${errMsg}`);
+      }
 
       // Stale/corrupt continuation recovery: ask the provider whether
       // this error means the stored continuation is unusable, and clear
@@ -327,6 +338,11 @@ async function processQuery(
         if (skipped.length > 0) {
           markCompleted(skipped);
           log(`Pre-task script skipped ${skipped.length} follow-up task(s): ${skipped.join(', ')}`);
+        }
+        if (preTask.failed && preTask.failed.length > 0) {
+          for (const fail of preTask.failed) {
+            routeTaskError(fail.seriesId || 'scheduled', fail.error);
+          }
         }
         // MODULE-HOOK:scheduling-pre-task-followup:end
 
@@ -487,6 +503,39 @@ function sendToDestination(dest: DestinationEntry, body: string, routing: Routin
     thread_id: destRouting?.threadId ?? null,
     content: JSON.stringify({ text: body }),
   });
+}
+
+function findLogsDestination(): DestinationEntry | undefined {
+  const candidates = ['logs-and-issues', '#logs-and-issues', 'logs_and_issues'];
+  for (const name of candidates) {
+    const dest = findByName(name);
+    if (dest) return dest;
+  }
+  const all = getAllDestinations();
+  return all.find((d) => {
+    const nameLower = d.name.toLowerCase();
+    return nameLower.includes('logs-and-issues') || nameLower.includes('logs_and_issues');
+  });
+}
+
+function routeTaskError(taskName: string, errorDetail: string): void {
+  const dest = findLogsDestination();
+  if (dest) {
+    const platformId = dest.type === 'channel' ? dest.platformId! : dest.agentGroupId!;
+    const channelType = dest.type === 'channel' ? dest.channelType! : 'agent';
+    const destRouting = resolveDestinationThread(channelType, platformId);
+    writeMessageOut({
+      id: generateId(),
+      in_reply_to: destRouting?.inReplyTo ?? null,
+      kind: 'chat',
+      platform_id: platformId,
+      channel_type: channelType,
+      thread_id: destRouting?.threadId ?? null,
+      content: JSON.stringify({ text: `❌ ${taskName} task failed\nDetails: ${errorDetail}` }),
+    });
+  } else {
+    log(`Could not find logs-and-issues destination to route error: ${taskName} failed - ${errorDetail}`);
+  }
 }
 
 /**

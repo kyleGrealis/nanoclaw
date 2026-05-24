@@ -17,6 +17,12 @@ If you are a fresh install (you ran `git clone`, not `git pull`) and there are n
 
 Personal Claude assistant. See [README.md](README.md) for philosophy and setup. Architecture lives in `docs/`.
 
+## Working with Kyle (Communication Rules)
+
+*   **Explain Before Acting:** Always explain your proposed plan, code changes, or refactoring ideas to Kyle *before* modifying files or executing commands. Wait for an explicit "yes" before proceeding.
+*   **No Rogue Restores:** If you make a mistake or go beyond boundaries, communicate the issue openly rather than silently reverting files to cover it up.
+*   **Staging, Committing, and Pushing:** Always ask for permission and get explicit approval in chat before staging, committing, or pushing changes.
+
 ## Quick Context
 
 The host is a single Node process that orchestrates per-session agent containers. Platform messages land via channel adapters, route through an entity model (users → messaging groups → agent groups → sessions), get written into the session's inbound DB, and wake a container. The agent-runner inside the container polls the DB, calls Claude, and writes back to the outbound DB. The host polls the outbound DB and delivers through the same adapter.

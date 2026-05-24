@@ -67,6 +67,7 @@ export async function runScript(script: string, taskId: string): Promise<ScriptR
 export interface TaskScriptOutcome {
   keep: MessageInRow[];
   skipped: string[];
+  failed: Array<{ id: string; seriesId: string | null; error: string }>;
 }
 
 /**
@@ -79,6 +80,7 @@ export interface TaskScriptOutcome {
 export async function applyPreTaskScripts(messages: MessageInRow[]): Promise<TaskScriptOutcome> {
   const keep: MessageInRow[] = [];
   const skipped: string[] = [];
+  const failed: Array<{ id: string; seriesId: string | null; error: string }> = [];
 
   for (const msg of messages) {
     if (msg.kind !== 'task') {
@@ -109,6 +111,13 @@ export async function applyPreTaskScripts(messages: MessageInRow[]): Promise<Tas
       const reason = result ? 'wakeAgent=false' : 'script error/no output';
       log(`task ${msg.id} skipped: ${reason}`);
       skipped.push(msg.id);
+      if (!result) {
+        failed.push({
+          id: msg.id,
+          seriesId: msg.series_id || null,
+          error: 'Pre-task script execution failed or returned invalid output.',
+        });
+      }
       continue;
     }
 
@@ -117,5 +126,5 @@ export async function applyPreTaskScripts(messages: MessageInRow[]): Promise<Tas
     keep.push({ ...msg, content: JSON.stringify(content) });
   }
 
-  return { keep, skipped };
+  return { keep, skipped, failed };
 }
