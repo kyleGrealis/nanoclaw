@@ -127,7 +127,8 @@ export function extractRouting(messages: MessageInRow[]): RoutingContext {
  * Strips routing fields — the agent never sees platform_id, channel_type, thread_id.
  */
 export function formatMessages(messages: MessageInRow[]): string {
-  const header = `<context timezone="${escapeXml(TIMEZONE)}" />\n`;
+  const nowStr = formatLocalTime(new Date().toISOString(), TIMEZONE);
+  const header = `<context timezone="${escapeXml(TIMEZONE)}" current_time="${escapeXml(nowStr)}" />\n`;
   if (messages.length === 0) return header;
 
   // Group by kind
@@ -199,7 +200,8 @@ function originAttr(msg: MessageInRow): string {
 function formatTaskMessage(msg: MessageInRow): string {
   const content = parseContent(msg.content);
   const from = originAttr(msg);
-  const time = formatLocalTime(msg.timestamp, TIMEZONE);
+  const taskTime = msg.process_after || msg.timestamp;
+  const time = formatLocalTime(taskTime, TIMEZONE);
   const parts: string[] = [];
   if (content.scriptOutput) {
     parts.push('Script output:', JSON.stringify(content.scriptOutput, null, 2), '');

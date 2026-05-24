@@ -51,6 +51,11 @@ describe('context timezone header', () => {
     expect(result).toContain(`<context timezone="${TIMEZONE}"`);
   });
 
+  it('includes current_time in the context header', () => {
+    const result = formatMessages([]);
+    expect(result).toContain('current_time="');
+  });
+
   it('header comes before the <messages> block', () => {
     insertMessage('m1', 'chat', { sender: 'Alice', text: 'one' });
     insertMessage('m2', 'chat', { sender: 'Bob', text: 'two' });
@@ -77,6 +82,21 @@ describe('timestamp formatting', () => {
     insertMessage('m1', 'chat', { sender: 'Alice', text: 'hi' }, { timestamp: '2026-06-15T15:30:00.000Z' });
     const result = formatMessages(getPendingMessages());
     expect(result).toMatch(/(AM|PM)/);
+  });
+
+  it('uses process_after for task timestamp if available', () => {
+    const timestamp = '2026-05-20T12:00:00.000Z';
+    const processAfter = '2026-05-21T12:00:00.000Z';
+    getInboundDb()
+      .prepare(
+        `INSERT INTO messages_in (id, kind, timestamp, process_after, status, content)
+         VALUES (?, ?, ?, ?, 'pending', ?)`
+      )
+      .run('t1', 'task', timestamp, processAfter, JSON.stringify({ prompt: 'Review PRs' }));
+
+    const result = formatMessages(getPendingMessages());
+    expect(result).toContain('May 21');
+    expect(result).not.toContain('May 20');
   });
 });
 
